@@ -647,6 +647,7 @@ function stopSpeech() {
 // ===================================================
 let gpsWatchId = null;
 let gpsCheckInterval = null;
+let hasLeftHome = false; // KRITIČNO: ne zatvori put dok ne vidi da je IZAŠAO iz zone
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -667,16 +668,22 @@ function initGPS() {
     
     navigator.geolocation.getCurrentPosition(async pos => {
       const { latitude, longitude } = pos.coords;
-      const homeLat = parseFloat(settings.lat) || 45.8314;
-      const homeLng = parseFloat(settings.lng) || 16.0622;
-      const radiusKm = (parseFloat(settings.radius) || 500) / 1000;
+      const homeLat = parseFloat(settings.lat) || 45.8280;
+      const homeLng = parseFloat(settings.lng) || 16.0530;
+      const radiusKm = (parseFloat(settings.radius) || 2000) / 1000;
       
       const distKm = haversineKm(latitude, longitude, homeLat, homeLng);
       
-      console.log(`GPS provjera: ${distKm.toFixed(3)}km od kuće (zona: ${radiusKm}km)`);
+      console.log(`GPS: ${distKm.toFixed(2)}km od kuće | hasLeftHome=${hasLeftHome} | zona=${radiusKm}km`);
       
-      if (distKm <= radiusKm) {
-        // Ušao u zonu kuće — automatski zatvori nalog!
+      if (distKm > radiusKm) {
+        // Izvan zone — zabilježi da je IZAŠAO
+        if (!hasLeftHome) {
+          hasLeftHome = true;
+          console.log('GPS: Izašao iz zone Dubrave! Sada pratim povratak...');
+        }
+      } else if (distKm <= radiusKm && hasLeftHome) {
+        // VRATIO SE u zonu NAKON što je bio vani — zatvori nalog!
         const now = new Date();
         const rounded = roundToHalfHour(now);
         activeTrip.datum_do   = formatDate(now);
@@ -687,11 +694,15 @@ function initGPS() {
         
         const tripRoute = activeTrip.ruta;
         activeTrip = null;
+        hasLeftHome = false;
         document.getElementById('trip-indicator').classList.remove('show');
         await updatePendingCount();
         await loadHistory();
         showToast('🏠 Dobrodošao kući! Put zatvoren: ' + tripRoute);
         console.log('GPS AUTOMATSKI ZATVORIO PUT u ' + formatTime(rounded));
+      } else {
+        // Još je u zoni ali NIJE izašao — ignorira se (tek kreće na put)
+        console.log('GPS: Još si u Dubravi, čekam da izađeš pa ću pratiti povratak...');
       }
     }, err => {
       console.warn('GPS interval error:', err.message);
