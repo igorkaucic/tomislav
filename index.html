@@ -258,7 +258,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2803.2208</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2803.2213</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -749,9 +749,8 @@ function processTranscript(text, mode) {
 }
 
 async function parsePutniNalog(text, dateStr, timeStr) {
-  // Check if there's already an active trip — this means user is returning
+  // If there's already an active trip — close it first, then create new one
   if (activeTrip) {
-    // Close trip
     activeTrip.datum_do    = dateStr;
     activeTrip.vrijeme_do  = timeStr;
     activeTrip.status      = 'zatvoren';
@@ -759,10 +758,7 @@ async function parsePutniNalog(text, dateStr, timeStr) {
     localStorage.removeItem('active_trip');
     activeTrip = null;
     document.getElementById('trip-indicator').classList.remove('show');
-    await updatePendingCount();
-    await loadHistory();
-    showToast('✅ Putni nalog zatvoren! ' + timeStr);
-    return;
+    console.log('Prethodni nalog automatski zatvoren.');
   }
 
   // Extract route — look for city names after common keywords
