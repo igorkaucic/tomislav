@@ -540,10 +540,10 @@ async function loadSettings() {
     const el = document.getElementById('s-' + k);
     if (el && settings[k]) el.value = settings[k];
   });
-  // Defaults
-  if (!settings.lat)    settings.lat    = 45.8314;
-  if (!settings.lng)    settings.lng    = 16.0622;
-  if (!settings.radius) settings.radius = 500;
+  // Defaults — centar Dubrave, Zagreb, radius 2km pokriva cijelu Dubravu
+  if (!settings.lat)    settings.lat    = 45.8280;
+  if (!settings.lng)    settings.lng    = 16.0530;
+  if (!settings.radius) settings.radius = 2000;
 }
 
 async function saveSettings() {
@@ -552,9 +552,9 @@ async function saveSettings() {
   settings['emailjs-service']  = document.getElementById('s-emailjs-service').value.trim();
   settings['emailjs-template'] = document.getElementById('s-emailjs-template').value.trim();
   settings['emailjs-public']   = document.getElementById('s-emailjs-public').value.trim();
-  settings.lat    = parseFloat(document.getElementById('s-lat').value)    || 45.8314;
-  settings.lng    = parseFloat(document.getElementById('s-lng').value)    || 16.0622;
-  settings.radius = parseFloat(document.getElementById('s-radius').value) || 500;
+  settings.lat    = parseFloat(document.getElementById('s-lat').value)    || 45.8280;
+  settings.lng    = parseFloat(document.getElementById('s-lng').value)    || 16.0530;
+  settings.radius = parseFloat(document.getElementById('s-radius').value) || 2000;
   settings.id     = 1;
   await dbPut('postavke', settings);
   showToast('✅ Postavke spremljene!');
