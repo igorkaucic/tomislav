@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#00D4B4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <title>Tomislav — Terenski Asistent</title>
+  <link rel="manifest" href="manifest.json">
+  <!-- Libraries from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.emailjs.com/dist/email.min.js"></script>
+
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0D1B2A;
+      --surface:  #112236;
+      --teal:     #00D4B4;
+      --amber:    #FFB300;
+      --purple:   #9B5DE5;
+      --text:     #E8F0F7;
+      --muted:    #7A95B0;
+      --danger:   #FF4C6A;
+      --success:  #00C97A;
+      --radius:   16px;
+    }
+
+    html, body {
+      height: 100%; width: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ===== LAYOUT ===== */
+    #app {
+      display: flex; flex-direction: column;
+      height: 100vh; height: 100dvh; height: -webkit-fill-available;
+      max-width: 480px; margin: 0 auto;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* ===== TOP BAR ===== */
+    .topbar {
+      padding: 16px 20px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(0,212,180,0.15);
+      flex-shrink: 0;
+    }
+    .topbar h1 { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: var(--teal); }
+    .topbar .sub { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+    .gps-dot {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--success);
+    }
+    .gps-dot::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--success); animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100%{opacity:1;transform:scale(1)}
+      50%{opacity:.5;transform:scale(1.2)}
+    }
+
+    /* ===== PAGES ===== */
+    .pages { flex: 1; overflow: hidden; position: relative; }
+    .page  { position: absolute; inset: 0; overflow-y: auto; padding: 16px; padding-bottom: 100px; display: none; flex-direction: column; gap: 12px; }
+    .page.active { display: flex; }
+
+    /* ===== ACTION BUTTONS ===== */
+    .action-btn {
+      display: flex; align-items: center; gap: 18px;
+      padding: 22px 20px; border-radius: var(--radius);
+      border: 2px solid transparent;
+      background: var(--surface);
+      cursor: pointer; transition: all .2s ease;
+      -webkit-user-select: none; user-select: none;
+      position: relative; overflow: hidden;
+    }
+    .action-btn:active { transform: scale(0.97); }
+    .action-btn .icon { font-size: 36px; flex-shrink: 0; width: 48px; text-align: center; }
+    .action-btn .info { flex: 1; }
+    .action-btn .info strong { display: block; font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .action-btn .info span  { font-size: 12px; color: var(--muted); }
+
+    .btn-teal   { border-color: var(--teal);   box-shadow: 0 0 20px rgba(0,212,180,.15); }
+    .btn-amber  { border-color: var(--amber);  box-shadow: 0 0 20px rgba(255,179,0,.15); }
+    .btn-purple { border-color: var(--purple); box-shadow: 0 0 20px rgba(155,93,229,.15); }
+    .btn-teal:active   { background: rgba(0,212,180,.08); }
+    .btn-amber:active  { background: rgba(255,179,0,.08); }
+    .btn-purple:active { background: rgba(155,93,229,.08); }
+
+    /* ===== RECORDING STATE ===== */
+    .recording-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(13,27,42,.95);
+      flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+    }
+    .recording-overlay.active { display: flex; }
+    .mic-pulse {
+      width: 100px; height: 100px; border-radius: 50%;
+      background: var(--teal); display: flex; align-items: center; justify-content: center;
+      font-size: 48px; animation: mic-anim 1s ease-in-out infinite;
+    }
+    @keyframes mic-anim {
+      0%,100%{ box-shadow: 0 0 0 0 rgba(0,212,180,.4); transform: scale(1); }
+      50%     { box-shadow: 0 0 0 24px rgba(0,212,180,0); transform: scale(1.05); }
+    }
+    .recording-text { font-size: 18px; color: var(--teal); font-weight: 600; }
+    .transcript-live { font-size: 14px; color: var(--muted); text-align: center; padding: 0 32px; min-height: 40px; }
+    .btn-stop {
+      padding: 14px 40px; border-radius: 50px; border: 2px solid var(--danger);
+      background: transparent; color: var(--danger); font-size: 15px; font-weight: 600;
+      cursor: pointer; margin-top: 8px;
+    }
+
+    /* ===== STATUS BAR ===== */
+    .status-bar {
+      display: flex; gap: 10px; align-items: center;
+      padding: 10px 16px; margin-bottom: 4px;
+      background: var(--surface); border-radius: var(--radius);
+      flex-shrink: 0;
+    }
+    .pending-badge {
+      background: var(--amber); color: #000; border-radius: 50px;
+      padding: 2px 10px; font-size: 11px; font-weight: 700;
+    }
+    .status-text { font-size: 12px; color: var(--muted); flex: 1; }
+    .sync-btn {
+      padding: 8px 20px; border-radius: 50px; border: none;
+      background: var(--teal); color: #0D1B2A; font-weight: 700; font-size: 13px;
+      cursor: pointer; flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+    }
+
+    /* ===== BOTTOM NAV ===== */
+    .bottom-nav {
+      display: flex; border-top: 1px solid rgba(0,212,180,.15);
+      flex-shrink: 0; background: var(--bg);
+      padding-bottom: env(safe-area-inset-bottom, 0px); /* Zbog iOS usjeka na dnu */
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      padding: 10px 0 14px; gap: 4px; cursor: pointer; border: none;
+      background: transparent; color: var(--muted); font-size: 10px;
+      transition: color .2s;
+    }
+    .nav-btn .nav-icon { font-size: 22px; }
+    .nav-btn.active { color: var(--teal); }
+
+    /* ===== HISTORY PAGE ===== */
+    .history-item-wrap {
+      position: relative; overflow: hidden; border-radius: var(--radius); margin-bottom: 0;
+    }
+    .history-delete-bg {
+      position: absolute; right: 0; top: 0; bottom: 0; width: 100%;
+      background: linear-gradient(90deg, transparent 60%, #e74c3c 80%);
+      display: flex; align-items: center; justify-content: flex-end;
+      padding-right: 20px; color: #fff; font-weight: 700; font-size: 14px;
+    }
+    .history-item {
+      position: relative; z-index: 2;
+      background: var(--surface); border-radius: var(--radius);
+      padding: 14px 16px; border-left: 3px solid var(--teal);
+      transition: transform .2s ease;
+      touch-action: pan-y;
+    }
+    .history-item.kvar  { border-color: var(--amber); }
+    .history-item.racun { border-color: var(--purple); }
+    .history-item .hi-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+    .history-item .hi-meta  { font-size: 11px; color: var(--muted); }
+    .empty-state { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
+
+    /* Undo banner */
+    .undo-banner {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #333; color: #fff; padding: 12px 20px; border-radius: 50px;
+      font-weight: 600; font-size: 14px; opacity: 0; transition: all .3s; z-index: 250;
+      display: flex; align-items: center; gap: 12px; white-space: nowrap;
+    }
+    .undo-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .undo-banner button {
+      background: var(--teal); color: #0D1B2A; border: none; padding: 6px 14px;
+      border-radius: 20px; font-weight: 700; cursor: pointer; font-size: 13px;
+    }
+
+    /* ===== SETTINGS PAGE ===== */
+    .settings-section { background: var(--surface); border-radius: var(--radius); padding: 16px; margin-bottom: 20px; }
+    .settings-section h3 { font-size: 13px; color: var(--teal); letter-spacing: 1px; margin-bottom: 14px; text-transform: uppercase; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .field input {
+      width: 100%; background: var(--bg); border: 1px solid rgba(0,212,180,.3);
+      border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 14px;
+    }
+    .field input:focus { outline: none; border-color: var(--teal); }
+    .save-btn {
+      width: 100%; padding: 14px; border-radius: var(--radius); border: none;
+      background: var(--teal); color: #0D1B2A; font-weight: 700; font-size: 15px;
+      cursor: pointer; margin-top: 8px;
+    }
+    .export-btn {
+      width: 100%; padding: 14px; border-radius: var(--radius); border: 2px solid var(--amber);
+      background: rgba(255,179,0,.1); color: var(--amber); font-weight: 700; font-size: 15px;
+      cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--teal); color: #0D1B2A; padding: 12px 24px; border-radius: 50px;
+      font-weight: 700; font-size: 14px; opacity: 0; transition: all .3s; z-index: 200;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.error { background: var(--danger); color: #fff; }
+
+    /* ===== CAMERA OVERLAY ===== */
+    .camera-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: #000; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .camera-overlay.active { display: flex; }
+    #camera-preview { width: 100%; max-height: 70vh; object-fit: contain; }
+    .camera-controls { display: flex; gap: 20px; padding: 20px; }
+    .cam-btn {
+      flex: 1; padding: 14px; border-radius: var(--radius); border: none;
+      font-weight: 700; font-size: 15px; cursor: pointer;
+    }
+    .cam-capture { background: var(--teal); color: #0D1B2A; }
+    .cam-cancel  { background: var(--surface); color: var(--text); }
+    #cam-file    { display: none; }
+    #canvas-ocr  { display: none; }
+
+    /* Active trip indicator */
+    .trip-active {
+      background: rgba(0,212,180,.08); border: 2px solid var(--teal);
+      border-radius: var(--radius); padding: 12px 16px;
+      display: none; align-items: center; gap: 12px;
+    }
+    .trip-active.show { display: flex; }
+    .trip-active .trip-icon { font-size: 24px; animation: spin 3s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .trip-active .trip-info strong { display: block; font-size: 14px; color: var(--teal); }
+    .trip-active .trip-info span   { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div>
+      <h1>TOMISLAV</h1>
+      <div class="sub">TERENSKI ASISTENT</div>
+    </div>
+    <div class="gps-dot" id="gps-status">GPS OFF</div>
+  </div>
+
+  <!-- PAGES -->
+  <div class="pages">
+
+    <!-- HOME PAGE -->
+    <div class="page active" id="page-home">
+
+      <!-- Active Trip Indicator -->
+      <div class="trip-active" id="trip-indicator">
+        <div class="trip-icon">🚗</div>
+        <div class="trip-info">
+          <strong id="trip-route-display">—</strong>
+          <span id="trip-time-display">Put u tijeku...</span>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span class="pending-badge" id="pending-count">0</span>
+        <span class="status-text" id="status-text">Nema novih stavki</span>
+        <button class="sync-btn" id="export-btn" onclick="exportZip()">📦 Preuzmi ZIP</button>
+      </div>
+
+      <!-- Main Actions -->
+      <div class="action-btn btn-teal" onclick="startSpeech('putni')">
+        <div class="icon">🎤</div>
+        <div class="info">
+          <strong>PUTNI NALOG</strong>
+          <span>Reci rutu i kreni na put</span>
+        </div>
+      </div>
+
+      <div class="action-btn btn-amber" onclick="startSpeech('kvar')">
+        <div class="icon">⚠️</div>
+        <div class="info">
+          <strong>PRIJAVI KVAR</strong>
+          <span>Reci lokaciju i opis kvara</span>
+        </div>
+      </div>
+
+      <div class="action-btn btn-purple" onclick="openCamera()">
+        <div class="icon">📷</div>
+        <div class="info">
+          <strong>SKENIRAJ RAČUN</strong>
+          <span>Fotografiraj R1 račun → AI čita</span>
+        </div>
+      </div>
+
+    </div><!-- /page-home -->
+
+    <!-- HISTORY PAGE -->
+    <div class="page" id="page-history">
+      <div style="display:flex; justify-content:flex-end; gap: 10px; padding-bottom:10px;">
+        <button class="sync-btn" onclick="exportZip()">📦 Skini na mobitel</button>
+        <button class="sync-btn" onclick="syncToServer()">📥 Baci na server</button>
+      </div>
+      <div id="history-list"><div class="empty-state">📋<br><br>Nema još evidentiranih stavki.</div></div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div class="settings-section">
+        <h3>⚙️ Postavke</h3>
+        <div class="field">
+          <label>Gemini API ključ (za skeniranje računa)</label>
+          <input type="password" id="s-gemini" placeholder="AIza...">
+        </div>
+        <div class="field">
+          <label>E-mail adresa (za izvještaje)</label>
+          <input type="email" id="s-email" placeholder="tomislav@example.com">
+        </div>
+        <div class="field">
+          <label>EmailJS Service ID</label>
+          <input type="text" id="s-emailjs-service" placeholder="service_xxxxxxx">
+        </div>
+        <div class="field">
+          <label>EmailJS Template ID</label>
+          <input type="text" id="s-emailjs-template" placeholder="template_xxxxxxx">
+        </div>
+        <div class="field">
+          <label>EmailJS Public Key</label>
+          <input type="text" id="s-emailjs-public" placeholder="xxxxxxxxxxxxxxx">
+        </div>
+        <div class="field">
+          <label>Latitude doma (Dubrava)</label>
+          <input type="number" id="s-lat" placeholder="45.8314" step="0.0001">
+        </div>
+        <div class="field">
+          <label>Longitude doma (Dubrava)</label>
+          <input type="number" id="s-lng" placeholder="16.0622" step="0.0001">
+        </div>
+        <div class="field">
+          <label>Radius geoozone (metara)</label>
+          <input type="number" id="s-radius" placeholder="500">
+        </div>
+        <button class="save-btn" onclick="saveSettings()">💾 Spremi postavke</button>
+      </div>
+      
+      <div class="settings-section">
+        <h3>📂 Iscrtavanje dokumenata</h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:10px;">Preuzmi probnu praznu datoteku za provjeru prikaza u mobilnom Excelu.</p>
+        <button class="export-btn" onclick="previewExcelTemplate()">👀 Otvori predložak u Excelu / Google Sheets</button>
+      </div>
+    </div><!-- /page-settings -->
+
+  </div><!-- /pages -->
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="nav-home" onclick="showPage('home')">
+      <span class="nav-icon">🏠</span> Glavna
+    </button>
+    <button class="nav-btn" id="nav-history" onclick="showPage('history')">
+      <span class="nav-icon">📋</span> Evidencija
+    </button>
+    <button class="nav-btn" id="nav-settings" onclick="showPage('settings')">
+      <span class="nav-icon">⚙️</span> Postavke
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- RECORDING OVERLAY -->
+<div class="recording-overlay" id="rec-overlay">
+  <div class="mic-pulse">🎤</div>
+  <div class="recording-text" id="rec-label">Slušam...</div>
+  <div class="transcript-live" id="transcript-live">Govori sada...</div>
+  <button class="btn-stop" onclick="stopSpeech()">■ Zaustavi</button>
+</div>
+
+<!-- CAMERA OVERLAY -->
+<div class="camera-overlay" id="cam-overlay">
+  <img id="camera-preview" src="" alt="Pregled">
+  <input type="file" id="cam-file" accept="image/*" capture="environment">
+  <div class="camera-controls">
+    <button class="cam-btn cam-capture" onclick="capturePhoto()">📷 Fotografiraj</button>
+    <button class="cam-btn cam-cancel"  onclick="closeCamera()">✕ Odustani</button>
+  </div>
+</div>
+
+<!-- Canvas for OCR (hidden) -->
+<canvas id="canvas-ocr"></canvas>
+
+<!-- UNDO BANNER -->
+<div class="undo-banner" id="undo-banner">
+  <span id="undo-text">Obrisano</span>
+  <button onclick="undoDelete()">↩ Vrati</button>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ===================================================
+// CONFIG & STATE
+// ===================================================
+let DB; // IndexedDB instance
+let settings = {};
+let currentMode = null;  // 'putni' | 'kvar'
+let recognition = null;
+let activeTrip = null;   // current open travel order
+let gpsWatcher = null;
+let lastTranscript = '';
+
+const DB_NAME    = 'tomislav_db';
+const DB_VERSION = 1;
+const STORES     = ['putni_nalozi', 'kvarovi', 'racuni', 'postavke'];
+
+// ===================================================
+// REMOTE LOGGING TO PC
+// ===================================================
+function remoteLog(level, msg) {
+  try {
+    fetch('/log', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ level, msg })
+    }).catch(e=>{});
+  } catch(e){}
+}
+
+// Override console
+const origLog = console.log;
+const origErr = console.error;
+const origWarn = console.warn;
+console.log = (...args) => { const s = args.join(' '); remoteLog('info', s); origLog(...args); };
+console.error = (...args) => { const s = args.join(' '); remoteLog('error', s); origErr(...args); };
+console.warn = (...args) => { const s = args.join(' '); remoteLog('warn', s); origWarn(...args); };
+window.onerror = (msg, url, line) => { console.error(`Uncaught: ${msg} u ${url}:${line}`); return false; };
+window.addEventListener('unhandledrejection', e => { console.error('Unhandled Promise:', e.reason); });
+
+// ===================================================
+// INIT
+// ===================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  console.log('--- APLIKACIJA POKRENUTA NA MOBITELU ---');
+  await initDB();
+  await loadSettings();
+  await updatePendingCount();
+  await loadHistory();
+  startGPS();
+  restoreActiveTrip();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
+});
+
+// ===================================================
+// INDEXEDDB
+// ===================================================
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      STORES.forEach(s => {
+        if (!db.objectStoreNames.contains(s)) {
+          db.createObjectStore(s, { keyPath: 'id', autoIncrement: true });
+        }
+      });
+    };
+    req.onsuccess = e => { DB = e.target.result; resolve(); };
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+function dbAdd(store, data) {
+  return new Promise((resolve, reject) => {
+    const tx  = DB.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).add(data);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((resolve, reject) => {
+    const tx  = DB.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+function dbPut(store, data) {
+  return new Promise((resolve, reject) => {
+    const tx  = DB.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(data);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+function dbDelete(store, id) {
+  return new Promise((resolve, reject) => {
+    const tx  = DB.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+let lastDeleted = null; // { store, data }
+
+// ===================================================
+// SETTINGS
+// ===================================================
+async function loadSettings() {
+  const all = await dbGetAll('postavke');
+  settings = all[0] || {};
+  if (settings.id === undefined) settings.id = 1;
+  // Populate settings fields
+  ['gemini','email','emailjs-service','emailjs-template','emailjs-public','lat','lng','radius'].forEach(k => {
+    const el = document.getElementById('s-' + k);
+    if (el && settings[k]) el.value = settings[k];
+  });
+  // Defaults
+  if (!settings.lat)    settings.lat    = 45.8314;
+  if (!settings.lng)    settings.lng    = 16.0622;
+  if (!settings.radius) settings.radius = 500;
+}
+
+async function saveSettings() {
+  settings.gemini            = document.getElementById('s-gemini').value.trim();
+  settings.email             = document.getElementById('s-email').value.trim();
+  settings['emailjs-service']  = document.getElementById('s-emailjs-service').value.trim();
+  settings['emailjs-template'] = document.getElementById('s-emailjs-template').value.trim();
+  settings['emailjs-public']   = document.getElementById('s-emailjs-public').value.trim();
+  settings.lat    = parseFloat(document.getElementById('s-lat').value)    || 45.8314;
+  settings.lng    = parseFloat(document.getElementById('s-lng').value)    || 16.0622;
+  settings.radius = parseFloat(document.getElementById('s-radius').value) || 500;
+  settings.id     = 1;
+  await dbPut('postavke', settings);
+  showToast('✅ Postavke spremljene!');
+}
+
+// ===================================================
+// NAVIGATION
+// ===================================================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'history') loadHistory();
+}
+
+// ===================================================
+// TOAST
+// ===================================================
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// ===================================================
+// SPEECH RECOGNITION
+// ===================================================
+function startSpeech(mode) {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) { showToast('❌ Govor nije podržan u ovom browseru', true); return; }
+
+  currentMode = mode;
+  lastTranscript = '';
+
+  const overlay = document.getElementById('rec-overlay');
+  const label   = document.getElementById('rec-label');
+  const live    = document.getElementById('transcript-live');
+
+  label.textContent = mode === 'putni' ? '🚗 Reci rutu...' : '⚠️ Reci lokaciju i kvar...';
+  live.textContent  = 'Govori sada...';
+  overlay.classList.add('active');
+
+  recognition = new SpeechRec();
+  recognition.lang        = 'hr-HR';
+  recognition.continuous  = false;
+  recognition.interimResults = true;
+
+  recognition.onresult = e => {
+    let interim = '';
+    let finalText = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalText += e.results[i][0].transcript + ' ';
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    if (finalText) lastTranscript = finalText.trim();
+    live.textContent = (lastTranscript + ' ' + interim).trim() || 'Govori sada...';
+  };
+
+  recognition.onerror = e => {
+    console.error('Speech error:', e.error);
+    overlay.classList.remove('active');
+    if (e.error === 'not-allowed') {
+      showToast('❌ MIKROFON BLOKIRAN: Chrome blokira http mrežu.', true);
+      alert('Chrome blokira mikrofon jer adresa nije HTTPS.\n\nDa bi proradilo:\n1. Otvori novi tab i upiši "chrome://flags"\n2. Nađi "unsafely-treat-insecure-origin-as-secure"\n3. Upali "Enabled" i upiši ovu tvoju 192.168.x.x adresu!\n\n(Ili ga otvori preko https tunela)');
+    } else {
+      showToast('❌ Greška: ' + e.error, true);
+    }
+  };
+
+  recognition.onend = () => {
+    overlay.classList.remove('active');
+    const text = lastTranscript.trim();
+    if (text) processTranscript(text, mode);
+  };
+
+  recognition.start();
+}
+
+function stopSpeech() {
+  if (recognition) recognition.stop();
+}
+
+// ===================================================
+// PARSER
+// ===================================================
+function processTranscript(text, mode) {
+  const now     = new Date();
+  const rounded = roundToHalfHour(now);
+  const dateStr = formatDate(now);
+  const timeStr = formatTime(rounded);
+
+  if (mode === 'putni') {
+    parsePutniNalog(text, dateStr, timeStr);
+  } else if (mode === 'kvar') {
+    parseKvar(text, dateStr, timeStr);
+  }
+}
+
+async function parsePutniNalog(text, dateStr, timeStr) {
+  // Check if there's already an active trip — this means user is returning
+  if (activeTrip) {
+    // Close trip
+    activeTrip.datum_do    = dateStr;
+    activeTrip.vrijeme_do  = timeStr;
+    activeTrip.status      = 'zatvoren';
+    await dbPut('putni_nalozi', activeTrip);
+    localStorage.removeItem('active_trip');
+    activeTrip = null;
+    document.getElementById('trip-indicator').classList.remove('show');
+    await updatePendingCount();
+    showToast('✅ Putni nalog zatvoren! ' + timeStr);
+    return;
+  }
+
+  // Extract route — look for city names after common keywords
+  const route = extractRoute(text);
+
+  const entry = {
+    tip:        'putni',
+    datum_od:   dateStr,
+    datum_do:   null,
+    vrijeme_od: timeStr,
+    vrijeme_do: null,
+    ruta:       route || text,
+    status:     'aktivan',
+    raw:        text
+  };
+
+  const id = await dbAdd('putni_nalozi', entry);
+  entry.id = id;
+  activeTrip = entry;
+  localStorage.setItem('active_trip', JSON.stringify(entry));
+
+  document.getElementById('trip-route-display').textContent = entry.ruta;
+  document.getElementById('trip-time-display').textContent  = 'Polazak: ' + timeStr;
+  document.getElementById('trip-indicator').classList.add('show');
+
+  // Switch to History page automatically so user sees it
+  showPage('history');
+  
+  await updatePendingCount();
+  showToast('🚗 Put počeo: ' + entry.ruta + ' u ' + timeStr);
+  console.log('KREIRAN PUTNI NALOG:', entry);
+}
+
+async function parseKvar(text, dateStr, timeStr) {
+  // Extract location — word(s) after "lokacija", "na", "u"
+  const lokacija = extractLocation(text);
+
+  const entry = {
+    tip:      'kvar',
+    datum:    dateStr,
+    vrijeme:  timeStr,
+    lokacija: lokacija || 'Nepoznato',
+    opis:     text,
+    status:   'prijavljeno'
+  };
+
+  await dbAdd('kvarovi', entry);
+  
+  // Switch to History tab so user sees exactly what was logged
+  showPage('history');
+  
+  await updatePendingCount();
+  showToast('⚠️ Kvar evidentiran: ' + entry.lokacija);
+  console.log('KREIRAN KVAR:', entry);
+}
+
+// ===================================================
+// CROATIAN CITY DATABASE (offline matching)
+// ===================================================
+const HR_GRADOVI = [
+  'Zagreb','Koprivnica','Križevci','Varaždin','Čakovec','Bjelovar','Sisak','Kutina','Petrinja',
+  'Karlovac','Rijeka','Pula','Zadar','Šibenik','Split','Dubrovnik','Osijek','Vukovar','Vinkovci',
+  'Slavonski Brod','Požega','Virovitica','Gospić','Zabok','Krapina','Đurđevac','Ludbreg',
+  'Ivanec','Lepoglava','Pregrada','Klanjec','Novi Marof','Sveti Ivan Zelina','Dugo Selo',
+  'Vrbovec','Velika Gorica','Samobor','Jastrebarsko','Ogulin','Delnice','Senj','Crikvenica',
+  'Labin','Rovinj','Poreč','Umag','Pazin','Buzet','Knin','Drniš','Trogir','Sinj','Makarska',
+  'Omiš','Imotski','Metković','Ploče','Đakovo','Našice','Slatina','Donji Miholjac','Valpovo',
+  'Beli Manastir','Nova Gradiška','Orahovica','Pakrac','Lipik','Daruvar','Grubišno Polje',
+  'Garešnica','Čazma','Popovača','Novska','Glina','Duga Resa','Slunj','Otočac','Biograd',
+  'Benkovac','Obrovac','Nin','Križ','Ivanjica','Sesvete','Dubrava','Zapresic','Zaprešić'
+];
+
+// Padežni nastavci za prepoznavanje dekliniranih oblika
+const PADEZ_SUFIKSI = ['u','a','e','i','om','em','oj','im','ama','cu','ce','ca','ku','ke','ka','nu','ne','na','du','de','da'];
+
+function matchCity(word) {
+  const w = word.toLowerCase().replace(/[.,!?;:"']/g, '');
+  if (w.length < 3) return null;
+  
+  // Direktno poklapanje (jednoriječni)
+  for (const grad of HR_GRADOVI) {
+    if (!grad.includes(' ') && w === grad.toLowerCase()) return grad;
+  }
+  
+  // Poklapanje s prvom riječju dvorječnog grada ("slavonski" → "Slavonski Brod")
+  for (const grad of HR_GRADOVI) {
+    if (grad.includes(' ')) {
+      const firstWord = grad.split(' ')[0].toLowerCase();
+      if (w === firstWord) return grad;
+      // Fuzzy na prvu riječ ("slavonskog" → "Slavonski Brod")
+      for (let trim = 1; trim <= 3; trim++) {
+        if (firstWord.length <= trim + 2) continue;
+        const fwBase = firstWord.substring(0, firstWord.length - trim);
+        if (w.startsWith(fwBase) && w.length >= fwBase.length && w.length <= fwBase.length + 4) {
+          return grad;
+        }
+      }
+    }
+  }
+  
+  // Fuzzy poklapanje s padežima za jednorijčne ("Koprivnicu" → "Koprivnica", "Križevce" → "Križevci")
+  for (const grad of HR_GRADOVI) {
+    if (grad.includes(' ')) continue;
+    const base = grad.toLowerCase();
+    for (let trim = 1; trim <= 3; trim++) {
+      if (base.length <= trim + 2) continue;
+      const gradBase = base.substring(0, base.length - trim);
+      if (w.startsWith(gradBase) && w.length >= gradBase.length && w.length <= gradBase.length + 4) {
+        return grad;
+      }
+    }
+  }
+  return null;
+}
+
+// Extract route: find cities in spoken text, format as "Zagreb - [City] - Zagreb"
+function extractRoute(text) {
+  const words = text.split(/[\s,;.!?]+/);
+  const foundCities = [];
+  const seen = new Set();
+  
+  // Dvoriječni gradovi prvo - točno u tekstu ("Slavonski Brod", "Nova Gradiška")
+  const fullText = text.toLowerCase();
+  for (const grad of HR_GRADOVI) {
+    if (grad.includes(' ')) {
+      if (fullText.includes(grad.toLowerCase()) && !seen.has(grad)) {
+        foundCities.push(grad);
+        seen.add(grad);
+        // Označi obje riječi kao iskorištene
+        grad.split(' ').forEach(gw => seen.add(gw.toLowerCase()));
+      }
+    }
+  }
+  
+  // Jednoriječni + parcijalno poklapanje dvorječnih
+  for (const word of words) {
+    if (seen.has(word.toLowerCase())) continue;
+    const city = matchCity(word);
+    if (city && !seen.has(city) && city !== 'Zagreb' && city !== 'Dubrava') {
+      foundCities.push(city);
+      seen.add(city);
+      // Ako je dvorječni, označi obje riječi
+      if (city.includes(' ')) {
+        city.split(' ').forEach(gw => seen.add(gw.toLowerCase()));
+      }
+    }
+  }
+  
+  if (foundCities.length === 0) {
+    // Fallback — vrati očišćen tekst
+    return text.replace(/krećem|idem|putovanje|teren|za|na put|u smjeru|polazak|krecem/gi, '').trim();
+  }
+  
+  // Format: Zagreb - Koprivnica - Zagreb
+  return 'Zagreb - ' + foundCities.join(' - ') + ' - Zagreb';
+}
+
+function extractLocation(text) {
+  // Prvo probaj naći grad
+  const words = text.split(/[\s,;.!?]+/);
+  for (const word of words) {
+    const city = matchCity(word);
+    if (city) return city;
+  }
+  // Fallback
+  const match = text.match(/(?:lokacija|na|u)\s+([A-ZČĆŠŽĐ][a-zčćšžđ]+(?:\s+[A-ZČĆŠŽĐ][a-zčćšžđ]+)*)/);
+  return match ? match[1] : null;
+}
+
+// ===================================================
+// TIME UTILITIES
+// ===================================================
+function roundToHalfHour(date) {
+  const d = new Date(date);
+  const mins = d.getMinutes();
+  if (mins < 15)       d.setMinutes(0,  0, 0);
+  else if (mins < 45)  d.setMinutes(30, 0, 0);
+  else { d.setHours(d.getHours() + 1); d.setMinutes(0, 0, 0); }
+  return d;
+}
+
+function formatDate(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+
+function formatTime(d) {
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function getMonthKey(dateStr) {
+  return dateStr ? dateStr.substring(0, 7) : formatDate(new Date()).substring(0, 7);
+}
+
+// ===================================================
+// GPS & GEOFENCING
+// ===================================================
+function startGPS() {
+  if (!navigator.geolocation) return;
+  const el = document.getElementById('gps-status');
+  gpsWatcher = navigator.geolocation.watchPosition(pos => {
+    el.textContent = 'GPS ✓';
+    el.style.color = 'var(--success)';
+    checkGeofence(pos.coords.latitude, pos.coords.longitude);
+  }, () => {
+    el.textContent = 'GPS ✗';
+    el.style.color = 'var(--danger)';
+  }, { enableHighAccuracy: true, maximumAge: 60000 });
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function checkGeofence(lat, lng) {
+  if (!activeTrip) return;
+  const dist = haversine(lat, lng, settings.lat, settings.lng);
+  if (dist <= (settings.radius || 500)) {
+    // HOME! Auto-close trip
+    const now    = new Date();
+    const timeStr = formatTime(roundToHalfHour(now));
+    activeTrip.datum_do   = formatDate(now);
+    activeTrip.vrijeme_do = timeStr;
+    activeTrip.status     = 'zatvoren';
+    await dbPut('putni_nalozi', activeTrip);
+    localStorage.removeItem('active_trip');
+    activeTrip = null;
+    document.getElementById('trip-indicator').classList.remove('show');
+    await updatePendingCount();
+    showToast('🏠 Doma! Put automatski zatvoren u ' + timeStr);
+  }
+}
+
+function restoreActiveTrip() {
+  const saved = localStorage.getItem('active_trip');
+  if (!saved) return;
+  try {
+    activeTrip = JSON.parse(saved);
+    document.getElementById('trip-route-display').textContent = activeTrip.ruta;
+    document.getElementById('trip-time-display').textContent  = 'Polazak: ' + activeTrip.vrijeme_od;
+    document.getElementById('trip-indicator').classList.add('show');
+  } catch(e) {}
+}
+
+// ===================================================
+// CAMERA & OCR (Gemini)
+// ===================================================
+function openCamera() {
+  const input = document.getElementById('cam-file');
+  input.click();
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    document.getElementById('camera-preview').src = url;
+    document.getElementById('cam-overlay').classList.add('active');
+    // Auto-process immediately
+    await processReceipt(file);
+    closeCamera();
+  };
+}
+
+function capturePhoto() { document.getElementById('cam-file').click(); }
+function closeCamera()  { document.getElementById('cam-overlay').classList.remove('active'); }
+
+async function processReceipt(file) {
+  if (!settings.gemini) {
+    showToast('❌ Gemini API ključ nije postavljen!', true);
+    return;
+  }
+
+  showToast('🔍 Čitam račun...');
+
+  const base64 = await fileToBase64(file);
+  const mimeType = file.type || 'image/jpeg';
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${settings.gemini}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: 'Ovo je fotografija računa. Izvuci u JSON formatu: datum (YYYY-MM-DD), naziv_prodavaca (string), ukupni_iznos (broj), stavke (array stringova). Vrati SAMO JSON, bez komentara.' },
+              { inline_data: { mime_type: mimeType, data: base64 } }
+            ]
+          }]
+        })
+      }
+    );
+
+    const json = await res.json();
+    const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const data = JSON.parse(cleaned);
+
+    const now = new Date();
+    const entry = {
+      tip:       'racun',
+      datum:     data.datum || formatDate(now),
+      prodavac:  data.naziv_prodavaca || 'Nepoznato',
+      iznos:     data.ukupni_iznos || 0,
+      stavke:    (data.stavke || []).join(', '),
+      slika:     base64.substring(0, 100), // stored truncated reference
+      status:    'novi'
+    };
+
+    await dbAdd('racuni', entry);
+    await updatePendingCount();
+    showToast('✅ Račun: ' + entry.prodavac + ' ' + entry.iznos + '€');
+
+  } catch(err) {
+    showToast('❌ Greška pri čitanju računa', true);
+    console.error(err);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ===================================================
+// HISTORY
+// ===================================================
+async function loadHistory() {
+  const [nalozi, kvarovi, racuni] = await Promise.all([
+    dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')
+  ]);
+
+  const all = [
+    ...nalozi.map(r => ({...r, _type:'putni'})),
+    ...kvarovi.map(r => ({...r, _type:'kvar'})),
+    ...racuni.map(r => ({...r, _type:'racun'}))
+  ].sort((a,b) => {
+    const da = a.datum_od || a.datum || '';
+    const db2 = b.datum_od || b.datum || '';
+    return db2.localeCompare(da);
+  });
+
+  const list = document.getElementById('history-list');
+  if (!all.length) {
+    list.innerHTML = '<div class="empty-state">📋<br><br>Nema još evidentiranih stavki.</div>';
+    return;
+  }
+
+  list.innerHTML = all.map(item => {
+    const storeMap = { putni: 'putni_nalozi', kvar: 'kvarovi', racun: 'racuni' };
+    const store = storeMap[item._type];
+    if (item._type === 'putni') {
+      const hrDate = item.datum_od ? item.datum_od.split('-').reverse().join('.') : '';
+      return `<div class="history-item-wrap">
+        <div class="history-delete-bg">🗑️ Obriši</div>
+        <div class="history-item" data-store="${store}" data-id="${item.id}" onclick="previewSpecificTrip(${item.id})" style="cursor:pointer">
+          <div class="hi-title">🚗 ${item.ruta}</div>
+          <div class="hi-meta">${hrDate} ${item.vrijeme_od} → ${item.datum_do ? item.datum_do.split('-').reverse().join('.') : 'aktivan'} ${item.vrijeme_do||''}</div>
+        </div>
+      </div>`;
+    } else if (item._type === 'kvar') {
+      return `<div class="history-item-wrap">
+        <div class="history-delete-bg">🗑️ Obriši</div>
+        <div class="history-item kvar" data-store="${store}" data-id="${item.id}">
+          <div class="hi-title">⚠️ ${item.lokacija}</div>
+          <div class="hi-meta">${item.datum} ${item.vrijeme} · ${item.opis.substring(0,80)}</div>
+        </div>
+      </div>`;
+    } else {
+      return `<div class="history-item-wrap">
+        <div class="history-delete-bg">🗑️ Obriši</div>
+        <div class="history-item racun" data-store="${store}" data-id="${item.id}">
+          <div class="hi-title">🧾 ${item.prodavac}</div>
+          <div class="hi-meta">${item.datum} · ${item.iznos}€</div>
+        </div>
+      </div>`;
+    }
+  }).join('');
+
+  // Attach swipe handlers
+  document.querySelectorAll('.history-item').forEach(initSwipe);
+}
+
+// ---- SWIPE TO DELETE ----
+function initSwipe(el) {
+  let startX = 0, currentX = 0, swiping = false;
+  const threshold = -100;
+  
+  el.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    currentX = 0;
+    swiping = true;
+    el.style.transition = 'none';
+  }, { passive: true });
+  
+  el.addEventListener('touchmove', e => {
+    if (!swiping) return;
+    currentX = e.touches[0].clientX - startX;
+    if (currentX > 0) currentX = 0; // only swipe left
+    el.style.transform = `translateX(${currentX}px)`;
+  }, { passive: true });
+  
+  el.addEventListener('touchend', async () => {
+    swiping = false;
+    el.style.transition = 'transform .2s ease';
+    if (currentX < threshold) {
+      // Delete!
+      el.style.transform = 'translateX(-110%)';
+      const store = el.dataset.store;
+      const id = parseInt(el.dataset.id);
+      // Save for undo
+      const allItems = await dbGetAll(store);
+      const item = allItems.find(i => i.id === id);
+      if (item) {
+        lastDeleted = { store, data: item };
+        await dbDelete(store, id);
+        await updatePendingCount();
+        setTimeout(() => loadHistory(), 300);
+        showUndoBanner(store === 'putni_nalozi' ? 'Putni nalog obrisan' : store === 'kvarovi' ? 'Kvar obrisan' : 'Račun obrisan');
+      }
+    } else {
+      el.style.transform = 'translateX(0)';
+    }
+  });
+}
+
+function showUndoBanner(text) {
+  const b = document.getElementById('undo-banner');
+  document.getElementById('undo-text').textContent = text;
+  b.classList.add('show');
+  clearTimeout(b._timer);
+  b._timer = setTimeout(() => { b.classList.remove('show'); lastDeleted = null; }, 5000);
+}
+
+async function undoDelete() {
+  if (!lastDeleted) return;
+  await dbAdd(lastDeleted.store, lastDeleted.data);
+  lastDeleted = null;
+  document.getElementById('undo-banner').classList.remove('show');
+  await updatePendingCount();
+  await loadHistory();
+  showToast('↩ Vraćeno!');
+}
+
+async function updatePendingCount() {
+  const [n,k,r] = await Promise.all([dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')]);
+  const count = n.length + k.length + r.length;
+  document.getElementById('pending-count').textContent = count;
+  document.getElementById('status-text').textContent =
+    count === 0 ? 'Nema stavki' : count + ' stavki u evidenciji';
+}
+
+// ===================================================
+// OFFLINE EXCEL EXPORT (SheetJS)
+// ===================================================
+async function exportZip() {
+  showToast('📦 Generiram dokumente iz predloška...');
+  try {
+    const [nalozi, kvarovi, racuni] = await Promise.all([
+      dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')
+    ]);
+
+    const zip = new JSZip();
+    const month = formatDate(new Date()).substring(0, 7); // YYYY-MM
+    
+    // Ucitaj PREDLOZAK
+    let templateData;
+    try {
+      const resp = await fetch('templates/putni_nalog.xlsx');
+      if (resp.ok) templateData = await resp.arrayBuffer();
+    } catch(e) { console.error('Fali template', e); }
+
+    // === SHEET 1: POJEDINACNI PUTNI NALOZI (STANDALONE OFFLINE) ===
+    if (nalozi.length) {
+      for (const nalog of nalozi) {
+        if (templateData && typeof ExcelJS !== 'undefined') {
+          // Edit existing template keeping formatting 100%
+          const wb = new ExcelJS.Workbook();
+          await wb.xlsx.load(templateData);
+          const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
+          const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
+          const dateObjOd = new Date(nalog.datum_od + 'T00:00:00');
+          const dateObjDo = nalog.datum_do ? new Date(nalog.datum_do + 'T00:00:00') : dateObjOd;
+
+          // SHEET 0: Deckblatt (Putni Nalog)
+          let sheet1 = wb.worksheets[0];
+          sheet1.getCell('C10').value = "TOMISLAV BASIC";
+          sheet1.getCell('C17').value = hrDateOd + '.';
+          sheet1.getCell('E17').value = nalog.ruta;
+          
+          // SHEET 1: Aufstellung (Putni Racun)
+          if (wb.worksheets.length > 1) {
+            let sheet2 = wb.worksheets[1];
+            sheet2.getCell('F4').value = 'TOMISLAV BASIC';
+            sheet2.getCell('F6').value = nalog.ruta;
+            sheet2.getCell('C11').value = dateObjOd;  // Date object
+            sheet2.getCell('F11').value = dateObjDo;   // Date object
+            sheet2.getCell('B16').value = hrDateOd;
+            sheet2.getCell('C16').value = nalog.vrijeme_od || '';
+            sheet2.getCell('D16').value = hrDateDo;
+            sheet2.getCell('E16').value = nalog.vrijeme_do || '';
+          }
+          
+          const buffer = await wb.xlsx.writeBuffer();
+          const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
+          const fileName = `PutniNalozi/${month}/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`;
+          zip.file(fileName, buffer);
+        } else {
+          // Fallback if template is missing
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([nalog]), 'Putni Nalog');
+          const fileName = `PutniNalozi/${month}/Putni_nalog_${nalog.datum_od}_${nalog.id}.xlsx`;
+          zip.file(fileName, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+        }
+      }
+    }
+
+    // === SHEET 2: Kvarovi ===
+    if (kvarovi.length) {
+      const kvarData = kvarovi.map(r => ({
+        'Datum': r.datum||'', 'Vrijeme': r.vrijeme||'', 'Lokacija': r.lokacija||'', 'Opis kvara': r.opis||'', 'Status': r.status||''
+      }));
+      const wb2 = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(kvarData), 'Kvarovi');
+      zip.file(`Kvarovi/${month}/kvarovi_zbirno_${month}.xlsx`, XLSX.write(wb2, { type: 'array', bookType: 'xlsx' }));
+    }
+
+    // === SHEET 3: Računi ===
+    if (racuni.length) {
+      const racunData = racuni.map(r => ({
+        'Datum': r.datum||'', 'Prodavač': r.prodavac||'', 'Iznos (€)': r.iznos||0, 'Stavke': r.stavke||''
+      }));
+      const wb3 = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(racunData), 'Računi');
+      zip.file(`Racuni/${month}/racuni_zbirno_${month}.xlsx`, XLSX.write(wb3, { type: 'array', bookType: 'xlsx' }));
+    }
+
+    // GENERATE ZIP NATIVELY ON PHONE
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = `Tomislav_${month}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✅ ZIP lokalno iskreiran!');
+
+  } catch(err) {
+    showToast('❌ Greška pri lokalnom izvozu iz predloška', true);
+    console.error(err);
+  }
+}
+
+// ===================================================
+// NATIVE APP EXCEL INTEGRATION
+// ===================================================
+function downloadNativeExcel(buffer, filename) {
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function previewSpecificTrip(id) {
+  showToast('Generiram dokument i otvaram Excel...');
+  try {
+    const nalozi = await dbGetAll('putni_nalozi');
+    const nalog = nalozi.find(n => n.id === id);
+    if (!nalog) throw new Error('Nalog nije pronađen u evidenciji');
+
+    const resp = await fetch('templates/putni_nalog.xlsx');
+    if (!resp.ok) throw new Error('Nema xlsx predloška u mapi "templates".');
+    const arrayBuffer = await resp.arrayBuffer();
+    
+    // EXCELJS LOGIC
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(arrayBuffer);
+    
+    const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
+    const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
+    const dateObjOd = new Date(nalog.datum_od + 'T00:00:00');
+    const dateObjDo = nalog.datum_do ? new Date(nalog.datum_do + 'T00:00:00') : dateObjOd;
+
+    // SHEET 0: Deckblatt
+    const sheet1 = wb.worksheets[0];
+    sheet1.getCell('C10').value = "TOMISLAV BASIC";
+    sheet1.getCell('C17').value = hrDateOd + '.';
+    sheet1.getCell('E17').value = nalog.ruta;
+    
+    // SHEET 1: Aufstellung
+    if (wb.worksheets.length > 1) {
+      let sheet2 = wb.worksheets[1];
+      sheet2.getCell('F4').value = 'TOMISLAV BASIC';
+      sheet2.getCell('F6').value = nalog.ruta;
+      sheet2.getCell('C11').value = dateObjOd;
+      sheet2.getCell('F11').value = dateObjDo;
+      sheet2.getCell('B16').value = hrDateOd;
+      sheet2.getCell('C16').value = nalog.vrijeme_od || '';
+      sheet2.getCell('D16').value = hrDateDo;
+      sheet2.getCell('E16').value = nalog.vrijeme_do || '';
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
+    const fileName = `Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`;
+    downloadNativeExcel(buffer, fileName);
+    showToast('Otvori preuzetu datoteku u Excelu/Google Sheets!');
+
+  } catch(e) {
+    console.error(e);
+    showToast('❌ ' + e.message, true);
+  }
+}
+
+async function previewExcelTemplate() {
+  showToast('Pripremam predložak...');
+  try {
+    const resp = await fetch('templates/putni_nalog.xlsx');
+    if (!resp.ok) throw new Error('Nema predložnog xlsx.');
+    const arrayBuffer = await resp.arrayBuffer();
+    
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(arrayBuffer);
+    const buffer = await wb.xlsx.writeBuffer();
+    
+    downloadNativeExcel(buffer, 'Testni_Nalog_Prazno.xlsx');
+    showToast('Datoteka je preuzeta! Otvori ju za prikaz.');
+  } catch(e) {
+    console.error(e);
+    showToast('❌ ' + e.message, true);
+  }
+}
+</script>
+</body>
+</html>
