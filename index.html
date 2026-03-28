@@ -601,12 +601,15 @@ function startSpeech(mode) {
 
   recognition = new SpeechRec();
   recognition.lang        = 'hr-HR';
-  recognition.continuous  = false;
+  recognition.continuous  = true;
   recognition.interimResults = true;
+
+  let userStopped = false;
 
   recognition.onresult = e => {
     let interim = '';
     let finalText = '';
+    // Rebuild ALL results from scratch each time (no duplicates)
     for (let i = 0; i < e.results.length; i++) {
       if (e.results[i].isFinal) {
         finalText += e.results[i][0].transcript + ' ';
@@ -620,22 +623,30 @@ function startSpeech(mode) {
 
   recognition.onerror = e => {
     console.error('Speech error:', e.error);
-    overlay.classList.remove('active');
     if (e.error === 'not-allowed') {
-      showToast('❌ MIKROFON BLOKIRAN: Chrome blokira http mrežu.', true);
-      alert('Chrome blokira mikrofon jer adresa nije HTTPS.\n\nDa bi proradilo:\n1. Otvori novi tab i upiši "chrome://flags"\n2. Nađi "unsafely-treat-insecure-origin-as-secure"\n3. Upali "Enabled" i upiši ovu tvoju 192.168.x.x adresu!\n\n(Ili ga otvori preko https tunela)');
-    } else {
+      overlay.classList.remove('active');
+      showToast('❌ MIKROFON BLOKIRAN!', true);
+    } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
       showToast('❌ Greška: ' + e.error, true);
     }
   };
 
   recognition.onend = () => {
+    if (!userStopped && overlay.classList.contains('active')) {
+      // Chrome killed it unexpectedly — restart!
+      try { recognition.start(); } catch(e) {}
+      return;
+    }
     overlay.classList.remove('active');
     const text = lastTranscript.trim();
     if (text) processTranscript(text, mode);
   };
 
   recognition.start();
+
+  // Override stop to mark user-initiated
+  const origStop = recognition.stop.bind(recognition);
+  recognition.stop = () => { userStopped = true; origStop(); };
 }
 
 function stopSpeech() {
