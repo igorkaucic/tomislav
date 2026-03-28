@@ -258,7 +258,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span style="opacity:.4;font-size:9px;margin-left:6px">v1.4</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2803.2208</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -760,6 +760,7 @@ async function parsePutniNalog(text, dateStr, timeStr) {
     activeTrip = null;
     document.getElementById('trip-indicator').classList.remove('show');
     await updatePendingCount();
+    await loadHistory();
     showToast('✅ Putni nalog zatvoren! ' + timeStr);
     return;
   }
@@ -791,6 +792,7 @@ async function parsePutniNalog(text, dateStr, timeStr) {
   showPage('history');
   
   await updatePendingCount();
+  await loadHistory();
   showToast('🚗 Put počeo: ' + entry.ruta + ' u ' + timeStr);
   console.log('KREIRAN PUTNI NALOG:', entry);
 }
@@ -814,6 +816,7 @@ async function parseKvar(text, dateStr, timeStr) {
   showPage('history');
   
   await updatePendingCount();
+  await loadHistory();
   showToast('⚠️ Kvar evidentiran: ' + entry.lokacija);
   console.log('KREIRAN KVAR:', entry);
 }
