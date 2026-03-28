@@ -661,6 +661,16 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 function initGPS() {
   if (!navigator.geolocation) return;
+  const el = document.getElementById('gps-status');
+  
+  // Update GPS dot status
+  navigator.geolocation.getCurrentPosition(() => {
+    el.textContent = 'GPS ✓';
+    el.style.color = 'var(--success, #4CAF50)';
+  }, () => {
+    el.textContent = 'GPS ✗';
+    el.style.color = 'var(--danger, #e74c3c)';
+  }, { timeout: 5000 });
   
   // Passive watch — provjera svakih 3 minute kad je put aktivan
   gpsCheckInterval = setInterval(async () => {
@@ -935,49 +945,7 @@ function formatTime(d) {
 function getMonthKey(dateStr) {
   return dateStr ? dateStr.substring(0, 7) : formatDate(new Date()).substring(0, 7);
 }
-
-// ===================================================
-// GPS & GEOFENCING
-// ===================================================
-function startGPS() {
-  if (!navigator.geolocation) return;
-  const el = document.getElementById('gps-status');
-  gpsWatcher = navigator.geolocation.watchPosition(pos => {
-    el.textContent = 'GPS ✓';
-    el.style.color = 'var(--success)';
-    checkGeofence(pos.coords.latitude, pos.coords.longitude);
-  }, () => {
-    el.textContent = 'GPS ✗';
-    el.style.color = 'var(--danger)';
-  }, { enableHighAccuracy: true, maximumAge: 60000 });
-}
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const dLat = (lat2-lat1) * Math.PI/180;
-  const dLon = (lon2-lon1) * Math.PI/180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-async function checkGeofence(lat, lng) {
-  if (!activeTrip) return;
-  const dist = haversine(lat, lng, settings.lat, settings.lng);
-  if (dist <= (settings.radius || 500)) {
-    // HOME! Auto-close trip
-    const now    = new Date();
-    const timeStr = formatTime(roundToHalfHour(now));
-    activeTrip.datum_do   = formatDate(now);
-    activeTrip.vrijeme_do = timeStr;
-    activeTrip.status     = 'zatvoren';
-    await dbPut('putni_nalozi', activeTrip);
-    localStorage.removeItem('active_trip');
-    activeTrip = null;
-    document.getElementById('trip-indicator').classList.remove('show');
-    await updatePendingCount();
-    showToast('🏠 Doma! Put automatski zatvoren u ' + timeStr);
-  }
-}
+// (GPS logic is handled by initGPS above)
 
 function restoreActiveTrip() {
   const saved = localStorage.getItem('active_trip');
