@@ -464,7 +464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await updatePendingCount();
   await loadHistory();
-  startGPS();
+  initGPS();
   restoreActiveTrip();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -640,6 +640,64 @@ function startSpeech(mode) {
 
 function stopSpeech() {
   if (recognition) recognition.stop();
+}
+
+// ===================================================
+// GPS GEOFENCING — auto-vraćanje kući
+// ===================================================
+let gpsWatchId = null;
+let gpsCheckInterval = null;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+            Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function initGPS() {
+  if (!navigator.geolocation) return;
+  
+  // Passive watch — provjera svakih 3 minute kad je put aktivan
+  gpsCheckInterval = setInterval(async () => {
+    if (!activeTrip) return; // nema aktivnog puta, nema provjere
+    
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const { latitude, longitude } = pos.coords;
+      const homeLat = parseFloat(settings.lat) || 45.8314;
+      const homeLng = parseFloat(settings.lng) || 16.0622;
+      const radiusKm = (parseFloat(settings.radius) || 500) / 1000;
+      
+      const distKm = haversineKm(latitude, longitude, homeLat, homeLng);
+      
+      console.log(`GPS provjera: ${distKm.toFixed(3)}km od kuće (zona: ${radiusKm}km)`);
+      
+      if (distKm <= radiusKm) {
+        // Ušao u zonu kuće — automatski zatvori nalog!
+        const now = new Date();
+        const rounded = roundToHalfHour(now);
+        activeTrip.datum_do   = formatDate(now);
+        activeTrip.vrijeme_do = formatTime(rounded);
+        activeTrip.status     = 'zatvoren';
+        await dbPut('putni_nalozi', activeTrip);
+        localStorage.removeItem('active_trip');
+        
+        const tripRoute = activeTrip.ruta;
+        activeTrip = null;
+        document.getElementById('trip-indicator').classList.remove('show');
+        await updatePendingCount();
+        await loadHistory();
+        showToast('🏠 Dobrodošao kući! Put zatvoren: ' + tripRoute);
+        console.log('GPS AUTOMATSKI ZATVORIO PUT u ' + formatTime(rounded));
+      }
+    }, err => {
+      console.warn('GPS interval error:', err.message);
+    }, { timeout: 10000, maximumAge: 60000 });
+    
+  }, 3 * 60 * 1000); // svakih 3 minute
 }
 
 // ===================================================
