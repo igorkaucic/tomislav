@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#00D4B4">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
-  <title>Tomislav — Terenski Asistent v2.0</title>
+  <title>Tomislav — Terenski Asistent</title>
   <link rel="manifest" href="manifest.json">
   <!-- Libraries from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -242,14 +242,15 @@
     .cam-corner.tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-radius: 0 6px 0 0; }
     .cam-corner.bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 6px; }
     .cam-corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 6px 0; }
+    .cam-scan-frame { z-index: 1; }
     .camera-controls {
-      position: absolute; bottom: 0; left: 0; right: 0;
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; justify-content: space-around;
       padding: 24px 30px 40px; background: linear-gradient(transparent, rgba(0,0,0,.7));
     }
     .cam-btn {
       border: none; background: none; cursor: pointer; display: flex;
-      align-items: center; justify-content: center;
+      align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent;
     }
     .cam-cancel { width: 48px; height: 48px; color: #fff; opacity: .7; }
     .cam-capture {
@@ -403,7 +404,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2009</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2016</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -427,8 +428,8 @@
       <div class="status-bar">
         <span class="pending-badge" id="pending-count">0</span>
         <span class="status-text" id="status-text">Nema novih stavki</span>
-      <button class="sync-btn" id="export-btn" onclick="exportZip()">📦 Preuzmi ZIP</button>
-        <span style="font-size:10px;color:var(--muted);opacity:.5">v2.0</span>
+        <button class="sync-btn" id="export-btn" onclick="exportZip()">📦 Preuzmi ZIP</button>
+        <span style="font-size:10px;color:var(--muted);opacity:.5" id="version-label"></span>
       </div>
 
       <!-- Main Actions -->
@@ -601,6 +602,11 @@
 'use strict';
 
 // ===================================================
+// VERSION — single source of truth
+// ===================================================
+const APP_VERSION = '2.1';
+
+// ===================================================
 // CONFIG & STATE
 // ===================================================
 let DB; // IndexedDB instance
@@ -642,7 +648,13 @@ window.addEventListener('unhandledrejection', e => { console.error('Unhandled Pr
 // INIT
 // ===================================================
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('--- APLIKACIJA POKRENUTA NA MOBITELU ---');
+  console.log('--- TOMISLAV v' + APP_VERSION + ' POKRENUTA ---');
+  
+  // Inject version into UI
+  document.title = 'Tomislav — Terenski Asistent v' + APP_VERSION;
+  const vLabel = document.getElementById('version-label');
+  if (vLabel) vLabel.textContent = 'v' + APP_VERSION;
+  
   await initDB();
   await loadSettings();
   await updatePendingCount();
@@ -650,7 +662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGPS();
   restoreActiveTrip();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION).catch(()=>{});
   }
 });
 
@@ -1258,7 +1270,11 @@ async function openCamera() {
     cameraStream = stream;
     const video = document.getElementById('cam-video');
     video.srcObject = stream;
+    video.style.opacity = '1'; // reset from previous captures
     document.getElementById('cam-overlay').classList.add('active');
+    
+    // Explicitly play for iOS Safari
+    await video.play().catch(e => console.warn('Video play error', e));
   } catch(err) {
     console.error('Camera error:', err);
     showToast('❌ Kamera nije dostupna: ' + err.message, true);
@@ -1276,6 +1292,11 @@ async function capturePhoto() {
     showToast('⏳ Kamera se učitava, pokušaj ponovo...', true);
     return;
   }
+  
+  // Instant visual feedback
+  video.pause();
+  video.style.opacity = '0.5';
+  showToast('📸 Račun se obrađuje...', true);
   
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
