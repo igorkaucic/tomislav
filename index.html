@@ -635,7 +635,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '2.8';
+const APP_VERSION = '2.9';
 
 // ===================================================
 // CONFIG & STATE
@@ -1109,7 +1109,7 @@ async function parseKvar(text, dateStr, timeStr) {
     lokacija: lokacija || 'Nepoznato',
     opis:     text,
     status:   'prijavljeno',
-    trip_id:  activeTrip ? activeTrip.id : null // Automatically link if there is an active trip!
+    trip_id:  null // By user request: NEVER attach automatically, force manual dropdown linking
   };
 
   await dbAdd('kvarovi', note);
