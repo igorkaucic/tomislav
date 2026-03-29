@@ -1,4 +1,4 @@
-const CACHE = 'tomislav-202603291940';
+const CACHE = 'tomislav-202603291958';
 const ASSETS = [
   './index.html',
   './manifest.json',

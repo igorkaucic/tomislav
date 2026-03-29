@@ -223,22 +223,45 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .toast.error { background: var(--danger); color: #fff; }
 
-    /* ===== CAMERA OVERLAY ===== */
+    /* ===== CAMERA OVERLAY (live viewfinder) ===== */
     .camera-overlay {
       display: none; position: fixed; inset: 0; z-index: 100;
-      background: #000; flex-direction: column; align-items: center; justify-content: center;
+      background: #000; flex-direction: column;
     }
     .camera-overlay.active { display: flex; }
-    #camera-preview { width: 100%; max-height: 70vh; object-fit: contain; }
-    .camera-controls { display: flex; gap: 20px; padding: 20px; }
-    .cam-btn {
-      flex: 1; padding: 14px; border-radius: var(--radius); border: none;
-      font-weight: 700; font-size: 15px; cursor: pointer;
+    #cam-video { width: 100%; flex: 1; object-fit: cover; }
+    .cam-scan-frame {
+      position: absolute; top: 15%; left: 8%; right: 8%; bottom: 25%;
+      pointer-events: none;
     }
-    .cam-capture { background: var(--teal); color: #0D1B2A; }
-    .cam-cancel  { background: var(--surface); color: var(--text); }
-    #cam-file    { display: none; }
-    #canvas-ocr  { display: none; }
+    .cam-corner {
+      position: absolute; width: 28px; height: 28px;
+      border-color: var(--teal); border-style: solid; border-width: 0;
+    }
+    .cam-corner.tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-radius: 6px 0 0 0; }
+    .cam-corner.tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-radius: 0 6px 0 0; }
+    .cam-corner.bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 6px; }
+    .cam-corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 6px 0; }
+    .camera-controls {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-around;
+      padding: 24px 30px 40px; background: linear-gradient(transparent, rgba(0,0,0,.7));
+    }
+    .cam-btn {
+      border: none; background: none; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .cam-cancel { width: 48px; height: 48px; color: #fff; opacity: .7; }
+    .cam-capture {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(255,255,255,.15); padding: 6px;
+    }
+    .shutter-ring {
+      width: 100%; height: 100%; border-radius: 50%;
+      border: 4px solid #fff; background: transparent;
+      transition: background .15s;
+    }
+    .cam-capture:active .shutter-ring { background: rgba(255,255,255,.5); }
 
     /* Active trip indicator */
     .trip-active {
@@ -247,8 +270,7 @@
       display: none; align-items: center; gap: 12px;
     }
     .trip-active.show { display: flex; }
-    .trip-active .trip-icon { font-size: 24px; animation: spin 3s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .trip-active .trip-icon { color: var(--teal); }
     .trip-active .trip-info strong { display: block; font-size: 14px; color: var(--teal); }
     .trip-active .trip-info span   { font-size: 12px; color: var(--muted); }
 
@@ -284,8 +306,13 @@
     }
     .btn-confirm { background: var(--purple); color: #fff; }
     .btn-cancel-receipt { background: var(--surface); color: var(--muted); border: 1px solid rgba(122,149,176,.3) !important; }
-    .receipt-loading { text-align: center; color: var(--purple); font-size: 15px; }
-    .receipt-loading .spinner { font-size: 32px; animation: spin 1s linear infinite; display: block; margin-bottom: 12px; }
+    .receipt-loading { text-align: center; color: var(--purple); font-size: 15px; padding: 30px 0; }
+    .receipt-loading .scan-anim {
+      width: 64px; height: 64px; margin: 0 auto 16px;
+      border: 3px solid rgba(155,93,229,.2); border-top-color: var(--purple);
+      border-radius: 50%; animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Expense chips in history */
     .expense-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -376,7 +403,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1940</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1958</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -389,7 +416,7 @@
 
       <!-- Active Trip Indicator -->
       <div class="trip-active" id="trip-indicator">
-        <div class="trip-icon">🚗</div>
+        <div class="trip-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-2-2-3H7L4.5 10c-1 .2-1.5.9-1.5 1.9V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></div>
         <div class="trip-info">
           <strong id="trip-route-display">—</strong>
           <span id="trip-time-display">Put u tijeku...</span>
@@ -405,7 +432,7 @@
 
       <!-- Main Actions -->
       <div class="action-btn btn-teal" onclick="startSpeech('putni')">
-        <div class="icon">🎤</div>
+        <div class="icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
         <div class="info">
           <strong>PUTNI NALOG</strong>
           <span>Reci rutu i kreni na put</span>
@@ -413,18 +440,18 @@
       </div>
 
       <div class="action-btn btn-amber" onclick="startSpeech('kvar')">
-        <div class="icon">⚠️</div>
+        <div class="icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg></div>
         <div class="info">
-          <strong>PRIJAVI KVAR</strong>
-          <span>Reci lokaciju i opis kvara</span>
+          <strong>BILJEŠKA / KVAR</strong>
+          <span>Govorno dodaj bilješku na aktivan put</span>
         </div>
       </div>
 
       <div class="action-btn btn-purple" onclick="openCamera()">
-        <div class="icon">📷</div>
+        <div class="icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg></div>
         <div class="info">
           <strong>SKENIRAJ RAČUN</strong>
-          <span>Fotografiraj R1 račun → AI čita → dodaje na aktivan put</span>
+          <span>Fotografiraj račun → AI čita → dodaje na put</span>
         </div>
       </div>
 
@@ -495,13 +522,13 @@
   <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nav-home" onclick="showPage('home')">
-      <span class="nav-icon">🏠</span> Glavna
+      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg></span> Glavna
     </button>
     <button class="nav-btn" id="nav-history" onclick="showPage('history')">
-      <span class="nav-icon">📋</span> Evidencija
+      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg></span> Evidencija
     </button>
     <button class="nav-btn" id="nav-settings" onclick="showPage('settings')">
-      <span class="nav-icon">⚙️</span> Postavke
+      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Postavke
     </button>
   </nav>
 
@@ -509,24 +536,34 @@
 
 <!-- RECORDING OVERLAY -->
 <div class="recording-overlay" id="rec-overlay">
-  <div class="mic-pulse">🎤</div>
+  <div class="mic-pulse"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
   <div class="recording-text" id="rec-label">Slušam...</div>
   <div class="transcript-live" id="transcript-live">Govori sada...</div>
   <button class="btn-stop" onclick="stopSpeech()">■ Zaustavi</button>
 </div>
 
-<!-- CAMERA OVERLAY -->
+<!-- CAMERA OVERLAY (live viewfinder) -->
 <div class="camera-overlay" id="cam-overlay">
-  <img id="camera-preview" src="" alt="Pregled">
-  <input type="file" id="cam-file" accept="image/*" capture="environment">
+  <video id="cam-video" autoplay playsinline></video>
+  <div class="cam-scan-frame">
+    <div class="cam-corner tl"></div>
+    <div class="cam-corner tr"></div>
+    <div class="cam-corner bl"></div>
+    <div class="cam-corner br"></div>
+  </div>
   <div class="camera-controls">
-    <button class="cam-btn cam-capture" onclick="capturePhoto()">📷 Fotografiraj</button>
-    <button class="cam-btn cam-cancel"  onclick="closeCamera()">✕ Odustani</button>
+    <button class="cam-btn cam-cancel" onclick="closeCamera()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="cam-btn cam-capture" onclick="capturePhoto()">
+      <div class="shutter-ring"></div>
+    </button>
+    <div style="width:56px"></div><!-- Spacer for centering -->
   </div>
 </div>
 
-<!-- Canvas for OCR (hidden) -->
-<canvas id="canvas-ocr"></canvas>
+<!-- Canvas for capture (hidden) -->
+<canvas id="canvas-ocr" style="display:none"></canvas>
 
 <!-- RECEIPT CONFIRM OVERLAY -->
 <div class="receipt-overlay" id="receipt-overlay">
@@ -994,7 +1031,8 @@ async function parsePutniNalog(text, dateStr, timeStr) {
     ruta:       route || text,
     status:     'aktivan',
     raw:        text,
-    troskovi:   []  // Receipt expenses attached during travel
+    troskovi:   [],  // Receipt expenses attached during travel
+    biljeske:   []   // Fault reports / notes attached during travel
   };
 
   const id = await dbAdd('putni_nalozi', entry);
@@ -1016,27 +1054,33 @@ async function parsePutniNalog(text, dateStr, timeStr) {
 }
 
 async function parseKvar(text, dateStr, timeStr) {
-  // Extract location — word(s) after "lokacija", "na", "u"
   const lokacija = extractLocation(text);
 
-  const entry = {
-    tip:      'kvar',
+  const note = {
     datum:    dateStr,
     vrijeme:  timeStr,
-    lokacija: lokacija || 'Nepoznato',
-    opis:     text,
-    status:   'prijavljeno'
+    lokacija: lokacija || '',
+    opis:     text
   };
 
-  await dbAdd('kvarovi', entry);
-  
-  // Switch to History tab so user sees exactly what was logged
+  if (activeTrip) {
+    // Attach note to active trip
+    if (!activeTrip.biljeske) activeTrip.biljeske = [];
+    activeTrip.biljeske.push(note);
+    await dbPut('putni_nalozi', activeTrip);
+    localStorage.setItem('active_trip', JSON.stringify(activeTrip));
+    showToast('📝 Bilješka dodana na put: ' + (lokacija || activeTrip.ruta));
+  } else {
+    // Fallback: save standalone if no active trip
+    const entry = { tip: 'kvar', ...note, status: 'prijavljeno' };
+    await dbAdd('kvarovi', entry);
+    showToast('⚠️ Kvar evidentiran (nema aktivnog puta): ' + (lokacija || 'Nepoznato'));
+  }
+
   showPage('history');
-  
   await updatePendingCount();
   await loadHistory();
-  showToast('⚠️ Kvar evidentiran: ' + entry.lokacija);
-  console.log('KREIRAN KVAR:', entry);
+  console.log('BILJEŠKA/KVAR:', note);
 }
 
 // ===================================================
@@ -1193,56 +1237,77 @@ function restoreActiveTrip() {
 // ===================================================
 // CAMERA & OCR (Gemini 3.1 Flash Lite — Structured Output)
 // ===================================================
-let pendingReceiptBase64 = null; // Temp storage for photo being processed
+let pendingReceiptBase64 = null;
+let cameraStream = null;
 
-function openCamera() {
+async function openCamera() {
   if (!activeTrip) {
-    // No active trip — ask if they want to create one or save standalone
     if (confirm('Nema aktivnog puta. Račun će se spremiti samo kao fotografija s datumom. Nastavi?')) {
-      openCameraStandalone();
-    }
-    return;
+      openCameraForStandalone = true;
+    } else return;
+  } else {
+    openCameraForStandalone = false;
   }
-  const input = document.getElementById('cam-file');
-  input.value = ''; // Reset so same file can be re-selected
-  input.click();
-  input.onchange = async () => {
-    const file = input.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    document.getElementById('camera-preview').src = url;
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    cameraStream = stream;
+    const video = document.getElementById('cam-video');
+    video.srcObject = stream;
     document.getElementById('cam-overlay').classList.add('active');
-    await processReceipt(file);
-    closeCamera();
-  };
+  } catch(err) {
+    console.error('Camera error:', err);
+    showToast('❌ Kamera nije dostupna: ' + err.message, true);
+  }
 }
 
-function openCameraStandalone() {
-  const input = document.getElementById('cam-file');
-  input.value = '';
-  input.click();
-  input.onchange = async () => {
-    const file = input.files[0];
-    if (!file) return;
-    const base64 = await fileToBase64(file);
+let openCameraForStandalone = false;
+
+async function capturePhoto() {
+  const video = document.getElementById('cam-video');
+  const canvas = document.getElementById('canvas-ocr');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  
+  // Stop camera immediately for responsiveness
+  closeCamera();
+  
+  // Convert to blob
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  const file = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
+  
+  if (openCameraForStandalone) {
+    // Standalone: download the photo
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     const now = new Date();
     const dateStr = now.getDate().toString().padStart(2,'0') + '.' +
                     (now.getMonth()+1).toString().padStart(2,'0') + '.' +
                     now.getFullYear();
-    // Download as standalone scan
-    const blob = file;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     a.href = url;
     a.download = `Scan_${dateStr}.jpg`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
-  };
+  } else {
+    // Active trip: process with AI
+    await processReceipt(file);
+  }
 }
 
-function capturePhoto() { document.getElementById('cam-file').click(); }
-function closeCamera()  { document.getElementById('cam-overlay').classList.remove('active'); }
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('cam-video').srcObject = null;
+  document.getElementById('cam-overlay').classList.remove('active');
+}
 
 async function processReceipt(file) {
   if (!settings.gemini) {
@@ -1254,13 +1319,14 @@ async function processReceipt(file) {
   const mimeType = file.type || 'image/jpeg';
   pendingReceiptBase64 = base64;
 
-  // Show loading state in overlay
+  // Show loading state
   const overlay = document.getElementById('receipt-overlay');
   const card = document.getElementById('receipt-card');
   card.innerHTML = `
     <div class="receipt-loading">
-      <span class="spinner">🔍</span>
-      AI čita račun...
+      <div class="scan-anim"></div>
+      <div style="font-weight:700">AI čita račun...</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Gemini 3.1 Flash Lite</div>
     </div>`;
   overlay.classList.add('active');
 
@@ -1412,6 +1478,7 @@ async function loadHistory() {
     if (item._type === 'putni') {
       const hrDate = item.datum_od ? item.datum_od.split('-').reverse().join('.') : '';
       const expenses = item.troskovi || [];
+      const notes = item.biljeske || [];
       const expenseTotal = expenses.reduce((s, e) => s + (e.iznos || 0), 0);
       const expenseChips = expenses.length ? `
         <div class="expense-chips">
@@ -1420,7 +1487,7 @@ async function loadHistory() {
       return `<div class="history-item-wrap">
         <div class="history-delete-bg">🗑️ Obriši</div>
         <div class="history-item" data-store="${store}" data-id="${item.id}" onclick="previewSpecificTrip(${item.id})" style="cursor:pointer">
-          <div class="hi-title">🚗 ${item.ruta}${expenses.length ? ' · 🧾' + expenses.length : ''}</div>
+          <div class="hi-title">🚗 ${item.ruta}${expenses.length ? ' · 🧾' + expenses.length : ''}${notes.length ? ' · 📝' + notes.length : ''}</div>
           <div class="hi-meta">${hrDate} ${item.vrijeme_od} → ${item.datum_do ? item.datum_do.split('-').reverse().join('.') : 'aktivan'} ${item.vrijeme_do||''}${expenseTotal ? ' · Troškovi: ' + expenseTotal.toFixed(2) + '€' : ''}</div>
           ${expenseChips}
         </div>
@@ -1553,6 +1620,16 @@ async function exportZip() {
           sheet1.getCell('C10').value = "TOMISLAV BASIC";
           sheet1.getCell('C17').value = hrDateOd + '.';
           sheet1.getCell('E17').value = nalog.ruta;
+          
+          // Write notes/faults into "sa zadaćom" field (D19-G22)
+          const tripNotes = nalog.biljeske || [];
+          if (tripNotes.length) {
+            const noteText = tripNotes.map(n => {
+              const loc = n.lokacija ? n.lokacija + ': ' : '';
+              return '• ' + loc + n.opis;
+            }).join('\n');
+            sheet1.getCell('D19').value = noteText;
+          }
           
           // SHEET 1: Aufstellung (Putni Račun)
           if (wb.worksheets.length > 1) {
@@ -1707,6 +1784,22 @@ async function previewSpecificTrip(id) {
       bodyHTML += `<div class="gallery-section"><div class="empty-state">Nema računa za ovaj put.</div></div>`;
     }
 
+    // === NOTES / BILJEŠKE SECTION (editable) ===
+    const notes = nalog.biljeske || [];
+    bodyHTML += `
+      <div class="gallery-section">
+        <h3>📝 Bilješke / Radovi (${notes.length})</h3>
+        <div id="notes-list" style="display:flex;flex-direction:column;gap:8px">
+          ${notes.length ? notes.map((n, i) => `
+            <div style="background:var(--surface);border-radius:var(--radius);padding:12px;border-left:3px solid var(--amber)">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${n.datum} ${n.vrijeme}${n.lokacija ? ' · ' + n.lokacija : ''}</div>
+              <textarea id="note-edit-${i}" style="width:100%;background:var(--bg);color:var(--text);border:1px solid rgba(255,191,0,.2);border-radius:8px;padding:8px;font-size:13px;resize:vertical;min-height:50px;font-family:inherit">${n.opis}</textarea>
+            </div>
+          `).join('') : '<div class="empty-state">Nema bilješki. Koristi "Prijavi kvar" za dodavanje.</div>'}
+        </div>
+        ${notes.length ? `<button onclick="saveNotes(${id})" style="margin-top:10px;padding:10px 16px;background:var(--amber);color:#0D1B2A;border:none;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer;width:100%">💾 Spremi izmjene bilješki</button>` : ''}
+      </div>`;
+
     document.getElementById('gallery-body').innerHTML = bodyHTML;
     document.getElementById('gallery-actions').innerHTML = `
       <button class="gallery-back" onclick="closeGallery()">← Natrag</button>
@@ -1726,6 +1819,27 @@ function closeGallery() {
 function showFullPhoto(src) {
   document.getElementById('photo-full-img').src = src;
   document.getElementById('photo-fullscreen').classList.add('active');
+}
+
+async function saveNotes(tripId) {
+  const nalozi = await dbGetAll('putni_nalozi');
+  const nalog = nalozi.find(n => n.id === tripId);
+  if (!nalog || !nalog.biljeske) return;
+  
+  nalog.biljeske.forEach((n, i) => {
+    const textarea = document.getElementById('note-edit-' + i);
+    if (textarea) n.opis = textarea.value;
+  });
+  
+  await dbPut('putni_nalozi', nalog);
+  
+  // Also update activeTrip if this is the active one
+  if (activeTrip && activeTrip.id === tripId) {
+    activeTrip = nalog;
+    localStorage.setItem('active_trip', JSON.stringify(activeTrip));
+  }
+  
+  showToast('💾 Bilješke spremljene!');
 }
 
 async function downloadTrip(id) {
@@ -1750,6 +1864,16 @@ async function downloadTrip(id) {
     sheet1.getCell('C10').value = "TOMISLAV BASIC";
     sheet1.getCell('C17').value = hrDateOd + '.';
     sheet1.getCell('E17').value = nalog.ruta;
+    
+    // Write notes/faults into "sa zadaćom / mit der Aufgabe" field (D19-G22)
+    const tripNotes = nalog.biljeske || [];
+    if (tripNotes.length) {
+      const noteText = tripNotes.map(n => {
+        const loc = n.lokacija ? n.lokacija + ': ' : '';
+        return '• ' + loc + n.opis;
+      }).join('\n');
+      sheet1.getCell('D19').value = noteText;
+    }
     
     // SHEET 1: Aufstellung
     if (wb.worksheets.length > 1) {
