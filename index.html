@@ -1580,34 +1580,46 @@ let editingNoteId = null;
 
 async function loadNotes() {
   const kvarovi = await dbGetAll('kvarovi');
+  const racuni = await dbGetAll('racuni');
   const nalozi = await dbGetAll('putni_nalozi');
-  
-  const all = [...kvarovi].sort((a,b) => (b.datum || '').localeCompare(a.datum || ''));
   const list = document.getElementById('notes-list');
 
-  if (!all.length) {
-    list.innerHTML = '<div class="empty-state">📝<br><br>Nema evidentiranih bilješki.</div>';
+  if (!kvarovi.length && !racuni.length) {
+    list.innerHTML = '<div class="empty-state">📝<br><br>Nema bilješki ni računa.</div>';
     return;
   }
 
-  list.innerHTML = all.map(item => {
-    let linkedText = '';
-    if (item.trip_id) {
-      const parentTrip = nalozi.find(n => n.id === item.trip_id);
-      if (parentTrip) linkedText = ` <span style="color:var(--teal)">[${parentTrip.ruta}]</span>`;
-    }
-    const locBadge = item.location_id ? ` <span style="color:var(--success);font-size:11px">📍 ${item.location_id}</span>` : '';
-    
-    return `<div class="history-item-wrap">
-      <div class="history-delete-bg">🗑️ Obriši</div>
-      <div class="history-item kvar" data-store="kvarovi" data-id="${item.id}" onclick="openNoteEdit(${item.id})" style="cursor:pointer">
-        <div class="hi-title">⚠️ ${item.lokacija}${linkedText}${locBadge}</div>
-        <div class="hi-meta">${item.datum} ${item.vrijeme} · <b>Dodirni za uređivanje</b></div>
-        <div style="font-size:14px;color:rgba(255,255,255,.9);margin-top:6px">${item.opis}</div>
-      </div>
-    </div>`;
-  }).join('');
+  let html = '';
 
+  if (racuni.length) {
+    const sortedR = [...racuni].sort((a,b) => (b.datum || '').localeCompare(a.datum || ''));
+    html += '<div style="font-size:12px;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:8px 0 6px">🧾 RAČUNI (' + racuni.length + ')</div>';
+    for (const r of sortedR) {
+      const locBadge = r.location_id ? ' <span style="color:var(--success);font-size:11px">📍 ' + r.location_id + '</span>' : '';
+      let linkedText = '';
+      if (r.trip_id) {
+        const trip = nalozi.find(n => n.id === r.trip_id);
+        if (trip) linkedText = ' <span style="color:var(--teal);font-size:11px">[🚗 ' + trip.ruta + ']</span>';
+      }
+      html += '<div class="history-item-wrap"><div class="history-delete-bg">🗑️ Obriši</div><div class="history-item racun" data-store="racuni" data-id="' + r.id + '" style="cursor:pointer"><div class="hi-title">🧾 ' + (r.vendor||'Nepoznato') + ': ' + (r.iznos||0).toFixed(2) + '€' + locBadge + linkedText + '</div><div class="hi-meta">' + (r.datum||'') + ' · ' + (r.opis||'') + '</div></div></div>';
+    }
+  }
+
+  if (kvarovi.length) {
+    const sortedK = [...kvarovi].sort((a,b) => (b.datum || '').localeCompare(a.datum || ''));
+    html += '<div style="font-size:12px;color:var(--amber);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:' + (racuni.length ? '16' : '8') + 'px 0 6px">⚠️ BILJEŠKE / KVAROVI (' + kvarovi.length + ')</div>';
+    for (const item of sortedK) {
+      let linkedText = '';
+      if (item.trip_id) {
+        const parentTrip = nalozi.find(n => n.id === item.trip_id);
+        if (parentTrip) linkedText = ' <span style="color:var(--teal)">[' + parentTrip.ruta + ']</span>';
+      }
+      const locBadge = item.location_id ? ' <span style="color:var(--success);font-size:11px">📍 ' + item.location_id + '</span>' : '';
+      html += '<div class="history-item-wrap"><div class="history-delete-bg">🗑️ Obriši</div><div class="history-item kvar" data-store="kvarovi" data-id="' + item.id + '" onclick="openNoteEdit(' + item.id + ')" style="cursor:pointer"><div class="hi-title">⚠️ ' + item.lokacija + linkedText + locBadge + '</div><div class="hi-meta">' + item.datum + ' ' + item.vrijeme + ' · <b>Dodirni za uređivanje</b></div><div style="font-size:14px;color:rgba(255,255,255,.9);margin-top:6px">' + item.opis + '</div></div></div>';
+    }
+  }
+
+  list.innerHTML = html;
   document.querySelectorAll('#notes-list .history-item').forEach(initSwipe);
 }
 
