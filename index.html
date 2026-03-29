@@ -614,6 +614,9 @@
     <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">Opis (tekst bilješke)</label>
     <textarea id="note-edit-opis" style="width:100%;height:100px;margin-bottom:15px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:12px;font-size:15px;resize:none"></textarea>
     
+    <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">📍 Šifra lokacije / objekta</label>
+    <input type="text" id="note-edit-location" style="width:100%;padding:12px;margin-bottom:15px;background:var(--bg);color:var(--text);border:1px solid rgba(0,212,180,.3);border-radius:6px;font-size:16px" placeholder="npr. 410.10">
+    
     <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">Poveži s putnim nalogom (ispis u Excelu)</label>
     <select id="note-edit-trip" style="width:100%;padding:12px;margin-bottom:20px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:15px">
        <option value="">-- Samostalan kvar (bez naloga) --</option>
@@ -635,7 +638,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '2.9';
+const APP_VERSION = '2.10';
 
 // ===================================================
 // CONFIG & STATE
@@ -649,31 +652,10 @@ let gpsWatcher = null;
 let lastTranscript = '';
 
 const DB_NAME    = 'tomislav_db';
-const DB_VERSION = 2;
-const STORES     = ['putni_nalozi', 'kvarovi', 'postavke'];
+const DB_VERSION = 3;
+const STORES     = ['putni_nalozi', 'kvarovi', 'postavke', 'racuni'];
 
-// ===================================================
-// REMOTE LOGGING TO PC
-// ===================================================
-function remoteLog(level, msg) {
-  try {
-    fetch('/log', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ level, msg })
-    }).catch(e=>{});
-  } catch(e){}
-}
-
-// Override console
-const origLog = console.log;
-const origErr = console.error;
-const origWarn = console.warn;
-console.log = (...args) => { const s = args.join(' '); remoteLog('info', s); origLog(...args); };
-console.error = (...args) => { const s = args.join(' '); remoteLog('error', s); origErr(...args); };
-console.warn = (...args) => { const s = args.join(' '); remoteLog('warn', s); origWarn(...args); };
-window.onerror = (msg, url, line) => { console.error(`Uncaught: ${msg} u ${url}:${line}`); return false; };
-window.addEventListener('unhandledrejection', e => { console.error('Unhandled Promise:', e.reason); });
+// (Remote logging removed — contradicts offline-first PWA architecture)
 
 // ===================================================
 // INIT
@@ -1109,7 +1091,8 @@ async function parseKvar(text, dateStr, timeStr) {
     lokacija: lokacija || 'Nepoznato',
     opis:     text,
     status:   'prijavljeno',
-    trip_id:  null // By user request: NEVER attach automatically, force manual dropdown linking
+    trip_id:  null,
+    location_id: null
   };
 
   await dbAdd('kvarovi', note);
@@ -1279,14 +1262,6 @@ let pendingReceiptBase64 = null;
 let cameraStream = null;
 
 async function openCamera() {
-  if (!activeTrip) {
-    if (confirm('Nema aktivnog puta. Račun će se spremiti samo kao fotografija s datumom. Nastavi?')) {
-      openCameraForStandalone = true;
-    } else return;
-  } else {
-    openCameraForStandalone = false;
-  }
-  
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -1306,64 +1281,93 @@ async function openCamera() {
   }
 }
 
-let openCameraForStandalone = false;
+let openCameraForStandalone = false; // legacy compat
 
 async function capturePhoto() {
   try {
     const video = document.getElementById('cam-video');
     const canvas = document.getElementById('canvas-ocr');
     
-    // Guard: video might not be ready yet
     if (!video || !video.videoWidth || !video.videoHeight) {
       showToast('⏳ Kamera se učitava, pokušaj ponovo...', true);
-      alert('Kamera nije spremna! Video width je ' + (video ? video.videoWidth : 'null'));
       return;
     }
     
-    // Instant visual feedback
     try { video.pause(); } catch(e){}
     video.style.opacity = '0.5';
-    showToast('📸 Račun se obrađuje...', true);
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
     
-    // Create blob BEFORE closing camera (stream must be alive for capture)
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    
-    // NOW stop camera
     closeCamera();
     
     if (!blob) {
       showToast('❌ Greška pri snimanju fotografije', true);
-      alert('Nije moguće stvoriti blob od slike!');
       return;
     }
     
     const file = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
+    listenForReceiptContext(file);
     
-    if (openCameraForStandalone) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const now = new Date();
-      const dateStr = now.getDate().toString().padStart(2,'0') + '.' +
-                      (now.getMonth()+1).toString().padStart(2,'0') + '.' +
-                      now.getFullYear();
-      a.href = url;
-      a.download = `Scan_${dateStr}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
-    } else {
-      await processReceipt(file);
-    }
   } catch(err) {
     console.error(err);
-    alert('KRITIČNA GREŠKA U KAMERI: ' + err.message);
+    showToast('❌ Greška kamere: ' + err.message, true);
     closeCamera();
   }
+}
+
+// Voice-annotated receipt: listen for location context after photo
+function listenForReceiptContext(file) {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) { processReceipt(file, ''); return; }
+
+  const overlay = document.getElementById('rec-overlay');
+  const label   = document.getElementById('rec-label');
+  const live    = document.getElementById('transcript-live');
+
+  label.textContent = '📍 Reci lokaciju i bilješku...';
+  live.textContent  = 'npr. "410.10, materijal za police"';
+  overlay.classList.add('active');
+
+  let transcript = '';
+  let ended = false;
+  recognition = new SpeechRec();
+  recognition.lang = 'hr-HR';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  let silenceTimer = setTimeout(() => finish(), 6000);
+
+  function finish() {
+    if (ended) return;
+    ended = true;
+    try { recognition.stop(); } catch(e){}
+  }
+
+  recognition.onresult = e => {
+    let interim = '', finalText = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
+    }
+    if (finalText) transcript = finalText.trim();
+    live.textContent = (transcript + ' ' + interim).trim() || 'Govori sada...';
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => finish(), 3000);
+  };
+
+  recognition.onerror = () => {};
+  recognition.onend = () => {
+    ended = true;
+    overlay.classList.remove('active');
+    processReceipt(file, transcript.trim());
+  };
+
+  recognition.start();
+  setTimeout(() => finish(), 8000); // hard max
 }
 
 function closeCamera() {
@@ -1375,7 +1379,7 @@ function closeCamera() {
   document.getElementById('cam-overlay').classList.remove('active');
 }
 
-async function processReceipt(file) {
+async function processReceipt(file, voiceContext) {
   if (!settings.gemini) {
     showToast('❌ Gemini API ključ nije postavljen! Idi u Postavke.', true);
     return;
@@ -1385,19 +1389,21 @@ async function processReceipt(file) {
   const mimeType = file.type || 'image/jpeg';
   pendingReceiptBase64 = base64;
 
-  // Show loading state
   const overlay = document.getElementById('receipt-overlay');
   const card = document.getElementById('receipt-card');
   card.innerHTML = `
     <div class="receipt-loading">
       <div class="scan-anim"></div>
       <div style="font-weight:700">AI čita račun...</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Gemini 3.1 Flash Lite</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Gemini 3.1 Flash Lite${voiceContext ? ' + glasovni kontekst' : ''}</div>
     </div>`;
   overlay.classList.add('active');
 
   try {
-    // Gemini 3.1 Flash Lite with structured JSON output
+    const promptText = voiceContext
+      ? `Look at this receipt image. The user also said: "${voiceContext}". Extract the store/vendor name, grand total paid, and if the user mentioned a location/store ID number (like 410.10), extract that as location_id. Return ONLY the JSON.`
+      : 'Look at this receipt image. Extract the store/vendor name and the grand total amount paid. Return ONLY the JSON.';
+
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${settings.gemini}`,
       {
@@ -1406,7 +1412,7 @@ async function processReceipt(file) {
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: 'Look at this receipt image. Extract the store/vendor name and the grand total amount paid. Return ONLY the JSON.' },
+              { text: promptText },
               { inline_data: { mime_type: mimeType, data: base64 } }
             ]
           }],
@@ -1416,10 +1422,11 @@ async function processReceipt(file) {
               type: 'object',
               properties: {
                 vendor:      { type: 'string', description: 'Store or vendor name from the receipt header' },
-                description: { type: 'string', description: 'Short description of what was purchased, e.g. Gorivo, Materijal, Alat' },
-                total:       { type: 'number', description: 'Grand total amount paid, as a decimal number' }
+                description: { type: 'string', description: 'Short description of what was purchased' },
+                total:       { type: 'number', description: 'Grand total amount paid, as a decimal number' },
+                location_id: { type: 'string', description: 'Location/store ID number mentioned by user (e.g. 410.10), empty if not mentioned' }
               },
-              required: ['vendor', 'description', 'total']
+              required: ['vendor', 'description', 'total', 'location_id']
             }
           }
         })
@@ -1434,24 +1441,21 @@ async function processReceipt(file) {
     const json = await res.json();
     const raw = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     const data = JSON.parse(raw);
-
-    // Show confirmation card
-    showReceiptConfirmation(data.vendor || '', data.description || '', data.total || 0);
+    showReceiptConfirmation(data.vendor || '', data.description || '', data.total || 0, data.location_id || '');
 
   } catch(err) {
     console.error('Receipt OCR error:', err);
-    // Fallback: show empty form for manual entry
-    showReceiptConfirmation('', '', 0);
+    showReceiptConfirmation('', '', 0, '');
     showToast('⚠️ AI nije mogao pročitati — popuni ručno', true);
   }
 }
 
-function showReceiptConfirmation(vendor, description, total) {
+function showReceiptConfirmation(vendor, description, total, locationId) {
   const card = document.getElementById('receipt-card');
-  const tripLabel = activeTrip ? activeTrip.ruta : 'Nema aktivnog puta';
+  const tripLabel = activeTrip ? activeTrip.ruta : null;
   card.innerHTML = `
     <h3>🧾 Potvrdi račun</h3>
-    <div class="receipt-trip-label">🚗 ${tripLabel}</div>
+    ${tripLabel ? `<div class="receipt-trip-label">🚗 ${tripLabel}</div>` : ''}
     <div class="receipt-field">
       <label>Prodavač / Vendor</label>
       <input type="text" id="rc-vendor" value="${vendor}" placeholder="npr. PEVEX, INA...">
@@ -1463,6 +1467,10 @@ function showReceiptConfirmation(vendor, description, total) {
     <div class="receipt-field">
       <label>Iznos (€)</label>
       <input type="number" id="rc-total" value="${total || ''}" placeholder="0.00" step="0.01" inputmode="decimal">
+    </div>
+    <div class="receipt-field">
+      <label>📍 Šifra lokacije / objekta</label>
+      <input type="text" id="rc-location" value="${locationId || ''}" placeholder="npr. 410.10" inputmode="decimal" style="border-color:rgba(0,212,180,.5)">
     </div>
     <div class="receipt-btns">
       <button class="btn-cancel-receipt" onclick="closeReceiptOverlay()">✕ Odustani</button>
@@ -1476,34 +1484,29 @@ function closeReceiptOverlay() {
 }
 
 async function confirmReceipt() {
-  const vendor = document.getElementById('rc-vendor').value.trim();
-  const desc   = document.getElementById('rc-desc').value.trim();
-  const total  = parseFloat(document.getElementById('rc-total').value) || 0;
+  const vendor     = document.getElementById('rc-vendor').value.trim();
+  const desc       = document.getElementById('rc-desc').value.trim();
+  const total      = parseFloat(document.getElementById('rc-total').value) || 0;
+  const locationId = document.getElementById('rc-location').value.trim();
 
   if (!total) { showToast('❌ Unesi iznos!', true); return; }
 
-  // Build expense entry
-  const expense = {
+  const receipt = {
     vendor:      vendor || 'Nepoznato',
     opis:        desc || vendor || 'Trošak',
     iznos:       total,
     datum:       formatDate(new Date()),
-    foto_base64: pendingReceiptBase64 || null
+    foto_base64: pendingReceiptBase64 || null,
+    location_id: locationId || null,
+    trip_id:     activeTrip ? activeTrip.id : null
   };
 
-  // Attach to active trip
-  if (activeTrip) {
-    if (!activeTrip.troskovi) activeTrip.troskovi = [];
-    activeTrip.troskovi.push(expense);
-    await dbPut('putni_nalozi', activeTrip);
-    localStorage.setItem('active_trip', JSON.stringify(activeTrip));
-    console.log('TROŠAK DODAN na put:', expense);
-  }
+  await dbAdd('racuni', receipt);
 
   closeReceiptOverlay();
   await updatePendingCount();
   await loadHistory();
-  showToast(`✅ ${vendor}: ${total.toFixed(2)}€ dodano na put`);
+  showToast(`✅ ${vendor}: ${total.toFixed(2)}€${locationId ? ' · Lok. ' + locationId : ''}`);
 }
 
 function fileToBase64(file) {
@@ -1521,6 +1524,7 @@ function fileToBase64(file) {
 async function loadHistory() {
   const nalozi = await dbGetAll('putni_nalozi');
   const kvarovi = await dbGetAll('kvarovi');
+  const racuni = await dbGetAll('racuni');
 
   const all = [...nalozi].sort((a,b) => (b.datum_od || '').localeCompare(a.datum_od || ''));
   const list = document.getElementById('history-list');
@@ -1532,9 +1536,10 @@ async function loadHistory() {
 
   list.innerHTML = all.map(item => {
     const hrDate = item.datum_od ? item.datum_od.split('-').reverse().join('.') : '';
-    const expenses = item.troskovi || [];
+    const legacyExpenses = item.troskovi || [];
+    const linkedReceipts = racuni.filter(r => r.trip_id === item.id);
+    const expenses = [...legacyExpenses, ...linkedReceipts];
     
-    // dynamically pull linked notes
     const linkedNotes = kvarovi.filter(k => k.trip_id === item.id);
     const legacyNotes = item.biljeske || [];
     const notesCount = linkedNotes.length + legacyNotes.length;
@@ -1580,11 +1585,12 @@ async function loadNotes() {
       const parentTrip = nalozi.find(n => n.id === item.trip_id);
       if (parentTrip) linkedText = ` <span style="color:var(--teal)">[${parentTrip.ruta}]</span>`;
     }
+    const locBadge = item.location_id ? ` <span style="color:var(--success);font-size:11px">📍 ${item.location_id}</span>` : '';
     
     return `<div class="history-item-wrap">
       <div class="history-delete-bg">🗑️ Obriši</div>
       <div class="history-item kvar" data-store="kvarovi" data-id="${item.id}" onclick="openNoteEdit(${item.id})" style="cursor:pointer">
-        <div class="hi-title">⚠️ ${item.lokacija}${linkedText}</div>
+        <div class="hi-title">⚠️ ${item.lokacija}${linkedText}${locBadge}</div>
         <div class="hi-meta">${item.datum} ${item.vrijeme} · <b>Dodirni za uređivanje</b></div>
         <div style="font-size:14px;color:rgba(255,255,255,.9);margin-top:6px">${item.opis}</div>
       </div>
@@ -1605,6 +1611,7 @@ async function openNoteEdit(noteId) {
   
   document.getElementById('note-edit-lokacija').value = note.lokacija || '';
   document.getElementById('note-edit-opis').value = note.opis || '';
+  document.getElementById('note-edit-location').value = note.location_id || '';
   
   const tripSelect = document.getElementById('note-edit-trip');
   tripSelect.innerHTML = '<option value="">-- Samostalan kvar (bez naloga) --</option>';
@@ -1630,6 +1637,7 @@ async function saveNoteEdit() {
   
   note.lokacija = document.getElementById('note-edit-lokacija').value.trim();
   note.opis = document.getElementById('note-edit-opis').value.trim();
+  note.location_id = document.getElementById('note-edit-location').value.trim() || null;
   const rawTripId = document.getElementById('note-edit-trip').value;
   note.trip_id = rawTripId ? parseInt(rawTripId) : null;
   
@@ -1709,55 +1717,53 @@ async function undoDelete() {
 }
 
 async function updatePendingCount() {
-  const [n,k] = await Promise.all([dbGetAll('putni_nalozi'), dbGetAll('kvarovi')]);
-  const totalExpenses = n.reduce((s, t) => s + (t.troskovi || []).length, 0);
-  const count = n.length + k.length;
+  const [n,k,r] = await Promise.all([dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')]);
+  const count = n.length + k.length + r.length;
   document.getElementById('pending-count').textContent = count;
   document.getElementById('status-text').textContent =
-    count === 0 ? 'Nema stavki' : count + ' stavki' + (totalExpenses ? ' · ' + totalExpenses + ' računa' : '');
+    count === 0 ? 'Nema stavki' : count + ' stavki' + (r.length ? ' · ' + r.length + ' računa' : '');
 }
 
 // ===================================================
 // OFFLINE EXCEL EXPORT (SheetJS)
 // ===================================================
 async function exportZip() {
-  showToast('📦 Generiram dokumente iz predloška...');
+  showToast('📦 Generiram dokumente...');
   try {
-    const [nalozi, kvarovi] = await Promise.all([
-      dbGetAll('putni_nalozi'), dbGetAll('kvarovi')
+    const [nalozi, kvarovi, racuni] = await Promise.all([
+      dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')
     ]);
 
     const zip = new JSZip();
-    const month = formatDate(new Date()).substring(0, 7); // YYYY-MM
+    const month = formatDate(new Date()).substring(0, 7);
     
-    // Ucitaj PREDLOZAK
     let templateData;
     try {
       const resp = await fetch('templates/putni_nalog.xlsx');
       if (resp.ok) templateData = await resp.arrayBuffer();
     } catch(e) { console.error('Fali template', e); }
 
-    // === PUTNI NALOZI S TROŠKOVIMA ===
+    // === 1. PUTNI NALOZI (Travel Orders — own folder) ===
     if (nalozi.length) {
       for (const nalog of nalozi) {
+        const tripReceipts = racuni.filter(r => r.trip_id === nalog.id);
+        const legacyExpenses = nalog.troskovi || [];
+        const allExpenses = [...legacyExpenses, ...tripReceipts];
+        
+        const linkedNotes = kvarovi.filter(k => k.trip_id === nalog.id);
+        const legacyNotes = nalog.biljeske || [];
+        const tripNotes = [...legacyNotes, ...linkedNotes];
+
         if (templateData && typeof ExcelJS !== 'undefined') {
           const wb = new ExcelJS.Workbook();
           await wb.xlsx.load(templateData);
           const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
           const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
-          const dateObjOd = new Date(nalog.datum_od + 'T00:00:00');
-          const dateObjDo = nalog.datum_do ? new Date(nalog.datum_do + 'T00:00:00') : dateObjOd;
 
-          // SHEET 0: Deckblatt (Putni Nalog)
           let sheet1 = wb.worksheets[0];
           sheet1.getCell('C10').value = "TOMISLAV BASIC";
           sheet1.getCell('C17').value = hrDateOd + '.';
           sheet1.getCell('E17').value = nalog.ruta;
-          
-          // Write notes/faults into "sa zadaćom" field (D19-G22)
-          const linkedNotes = kvarovi.filter(k => k.trip_id === nalog.id);
-          const legacyNotes = nalog.biljeske || []; // support old notes
-          const tripNotes = [...legacyNotes, ...linkedNotes];
           
           if (tripNotes.length) {
             const noteText = tripNotes.map(n => {
@@ -1767,12 +1773,10 @@ async function exportZip() {
             sheet1.getCell('D19').value = noteText;
           }
           
-          // SHEET 1: Aufstellung (Putni Račun)
           if (wb.worksheets.length > 1) {
             let sheet2 = wb.worksheets[1];
             sheet2.getCell('F4').value = 'TOMISLAV BASIC';
             sheet2.getCell('F6').value = nalog.ruta;
-            // Use HR date strings for od/vom (fixes ExcelJS date serialization issue)
             sheet2.getCell('C11').value = hrDateOd;
             sheet2.getCell('F11').value = hrDateDo;
             sheet2.getCell('B16').value = hrDateOd;
@@ -1780,26 +1784,20 @@ async function exportZip() {
             sheet2.getCell('D16').value = hrDateDo;
             sheet2.getCell('E16').value = nalog.vrijeme_do || '';
 
-            // === TROŠKOVI (OBRAČUN OSTALIH TROŠKOVA) → B29-H33 ===
-            const expenses = nalog.troskovi || [];
-            const expenseRows = [29, 30, 31, 32, 33]; // Max 5 expense rows
+            const expenseRows = [29, 30, 31, 32, 33];
             let totalExpense = 0;
-            for (let i = 0; i < Math.min(expenses.length, expenseRows.length); i++) {
+            for (let i = 0; i < Math.min(allExpenses.length, expenseRows.length); i++) {
               const row = expenseRows[i];
-              const exp = expenses[i];
-              const label = exp.opis || exp.vendor || 'Trošak';
-              sheet2.getCell('B' + row).value = label;
+              const exp = allExpenses[i];
+              sheet2.getCell('B' + row).value = exp.opis || exp.vendor || 'Trošak';
               sheet2.getCell('H' + row).value = exp.iznos;
               sheet2.getCell('I' + row).value = exp.iznos + '€';
               totalExpense += exp.iznos;
             }
-            // Update UKUPNO at I34
             if (totalExpense > 0) {
-              // Daily allowance from H16 (if exists)
               const dnevnica = parseFloat(sheet2.getCell('H16').value) || 0;
               const grandTotal = dnevnica + totalExpense;
               sheet2.getCell('I34').value = grandTotal.toFixed(2) + '€';
-              // Update final totals
               sheet2.getCell('E46').value = grandTotal.toFixed(2) + '€';
               sheet2.getCell('E50').value = grandTotal.toFixed(2) + '€';
             }
@@ -1807,38 +1805,60 @@ async function exportZip() {
           
           const buffer = await wb.xlsx.writeBuffer();
           const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
-          const fileName = `PutniNalozi/${month}/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`;
-          zip.file(fileName, buffer);
-
-          // Also save receipt photos as separate files
-          for (let i = 0; i < (nalog.troskovi || []).length; i++) {
-            const exp = nalog.troskovi[i];
-            if (exp.foto_base64) {
-              const photoName = `PutniNalozi/${month}/Racuni/${exp.vendor || 'scan'}_${exp.datum || hrDateOd}.jpg`;
-              zip.file(photoName, exp.foto_base64, { base64: true });
-            }
-          }
+          zip.file(`Putni_Nalozi/${month}/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`, buffer);
         } else {
-          // Fallback if template is missing
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([nalog]), 'Putni Nalog');
-          const fileName = `PutniNalozi/${month}/Putni_nalog_${nalog.datum_od}_${nalog.id}.xlsx`;
-          zip.file(fileName, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+          zip.file(`Putni_Nalozi/${month}/Putni_nalog_${nalog.datum_od}_${nalog.id}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
         }
       }
     }
 
-    // === KVAROVI ===
-    if (kvarovi.length) {
-      const kvarData = kvarovi.map(r => ({
-        'Datum': r.datum||'', 'Vrijeme': r.vrijeme||'', 'Lokacija': r.lokacija||'', 'Opis kvara': r.opis||'', 'Status': r.status||''
-      }));
-      const wb2 = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(kvarData), 'Kvarovi');
-      zip.file(`Kvarovi/${month}/kvarovi_zbirno_${month}.xlsx`, XLSX.write(wb2, { type: 'array', bookType: 'xlsx' }));
+    // === 2. RAČUNI PO LOKACIJAMA (Receipts grouped by Location ID) ===
+    if (racuni.length) {
+      const byLocation = {};
+      for (const r of racuni) {
+        const loc = r.location_id || 'Bez_lokacije';
+        if (!byLocation[loc]) byLocation[loc] = [];
+        byLocation[loc].push(r);
+      }
+      for (const [locId, receipts] of Object.entries(byLocation)) {
+        for (const r of receipts) {
+          const hrDate = r.datum ? r.datum.split('-').reverse().join('.') : '';
+          if (r.foto_base64) {
+            zip.file(`Lokacije/${month}/${locId}/Racuni/${r.vendor || 'scan'}_${hrDate}_${locId}.jpg`, r.foto_base64, { base64: true });
+          }
+        }
+        const summaryData = receipts.map(r => ({
+          'Datum': r.datum || '', 'Vendor': r.vendor || '', 'Opis': r.opis || '',
+          'Iznos (€)': r.iznos || 0, 'Lokacija': locId
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), 'Računi');
+        zip.file(`Lokacije/${month}/${locId}/Racuni_zbirno_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+      }
     }
 
-    // GENERATE ZIP NATIVELY ON PHONE
+    // === 3. KVAROVI PO LOKACIJAMA (Faults grouped by Location ID) ===
+    if (kvarovi.length) {
+      const byLocation = {};
+      for (const k of kvarovi) {
+        const loc = k.location_id || 'Bez_lokacije';
+        if (!byLocation[loc]) byLocation[loc] = [];
+        byLocation[loc].push(k);
+      }
+      for (const [locId, faults] of Object.entries(byLocation)) {
+        const faultData = faults.map(k => ({
+          'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 'Lokacija': k.lokacija || '',
+          'Opis': k.opis || '', 'Status': k.status || '', 'Šifra objekta': locId
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(faultData), 'Kvarovi');
+        zip.file(`Lokacije/${month}/${locId}/Kvarovi_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+      }
+    }
+
+    // GENERATE ZIP
     const content = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(content);
     const a   = document.createElement('a');
@@ -1849,7 +1869,7 @@ async function exportZip() {
     showToast('✅ ZIP lokalno iskreiran!');
 
   } catch(err) {
-    showToast('❌ Greška pri lokalnom izvozu iz predloška', true);
+    showToast('❌ Greška pri izvozu', true);
     console.error(err);
   }
 }
@@ -1877,7 +1897,10 @@ async function previewSpecificTrip(id) {
 
     const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
     const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : 'aktivan';
-    const expenses = nalog.troskovi || [];
+    const allRacuni = await dbGetAll('racuni');
+    const linkedReceipts = allRacuni.filter(r => r.trip_id === id);
+    const legacyExpenses = nalog.troskovi || [];
+    const expenses = [...legacyExpenses, ...linkedReceipts];
     const expenseTotal = expenses.reduce((s, e) => s + (e.iznos || 0), 0);
 
     // Build gallery HTML
@@ -2005,8 +2028,11 @@ async function downloadTrip(id) {
     sheet1.getCell('C17').value = hrDateOd + '.';
     sheet1.getCell('E17').value = nalog.ruta;
     
-    // Write notes/faults into "sa zadaćom / mit der Aufgabe" field (D19-G22)
-    const tripNotes = nalog.biljeske || [];
+    // Notes: linked from kvarovi + legacy
+    const allKvarovi = await dbGetAll('kvarovi');
+    const linkedNotes = allKvarovi.filter(k => k.trip_id === id);
+    const legacyNotes = nalog.biljeske || [];
+    const tripNotes = [...legacyNotes, ...linkedNotes];
     if (tripNotes.length) {
       const noteText = tripNotes.map(n => {
         const loc = n.lokacija ? n.lokacija + ': ' : '';
@@ -2028,8 +2054,11 @@ async function downloadTrip(id) {
       sheet2.getCell('D16').value = hrDateDo;
       sheet2.getCell('E16').value = nalog.vrijeme_do || '';
 
-      // Write expenses
-      const expenses = nalog.troskovi || [];
+      // Expenses: linked from racuni + legacy
+      const allRacuni = await dbGetAll('racuni');
+      const tripReceipts = allRacuni.filter(r => r.trip_id === id);
+      const legacyExpenses = nalog.troskovi || [];
+      const expenses = [...legacyExpenses, ...tripReceipts];
       const expenseRows = [29, 30, 31, 32, 33];
       let totalExpense = 0;
       for (let i = 0; i < Math.min(expenses.length, expenseRows.length); i++) {
