@@ -403,7 +403,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2004</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2007</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -1269,20 +1269,32 @@ let openCameraForStandalone = false;
 async function capturePhoto() {
   const video = document.getElementById('cam-video');
   const canvas = document.getElementById('canvas-ocr');
+  
+  // Guard: video might not be ready yet
+  if (!video.videoWidth || !video.videoHeight) {
+    showToast('⏳ Kamera se učitava, pokušaj ponovo...', true);
+    return;
+  }
+  
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0);
   
-  // Stop camera immediately for responsiveness
+  // Create blob BEFORE closing camera (stream must be alive for capture)
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  
+  // NOW stop camera
   closeCamera();
   
-  // Convert to blob
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) {
+    showToast('❌ Greška pri snimanju fotografije', true);
+    return;
+  }
+  
   const file = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
   
   if (openCameraForStandalone) {
-    // Standalone: download the photo
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const now = new Date();
@@ -1295,7 +1307,6 @@ async function capturePhoto() {
     URL.revokeObjectURL(url);
     showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
   } else {
-    // Active trip: process with AI
     await processReceipt(file);
   }
 }
