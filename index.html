@@ -1805,11 +1805,11 @@ async function exportZip() {
           
           const buffer = await wb.xlsx.writeBuffer();
           const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
-          zip.file(`Putni_Nalozi/${month}/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`, buffer);
+          zip.file(`Putni_Nalozi/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`, buffer);
         } else {
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([nalog]), 'Putni Nalog');
-          zip.file(`Putni_Nalozi/${month}/Putni_nalog_${nalog.datum_od}_${nalog.id}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+          zip.file(`Putni_Nalozi/Putni_nalog_${nalog.datum_od}_${nalog.id}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
         }
       }
     }
@@ -1826,7 +1826,7 @@ async function exportZip() {
         for (const r of receipts) {
           const hrDate = r.datum ? r.datum.split('-').reverse().join('.') : '';
           if (r.foto_base64) {
-            zip.file(`Lokacije/${month}/${locId}/Racuni/${r.vendor || 'scan'}_${hrDate}_${locId}.jpg`, r.foto_base64, { base64: true });
+            zip.file(`${locId}/${r.vendor || 'scan'}_${hrDate}.jpg`, r.foto_base64, { base64: true });
           }
         }
         const summaryData = receipts.map(r => ({
@@ -1835,7 +1835,7 @@ async function exportZip() {
         }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), 'Računi');
-        zip.file(`Lokacije/${month}/${locId}/Racuni_zbirno_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+        zip.file(`${locId}/Racuni_zbirno_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
       }
     }
 
@@ -1854,7 +1854,7 @@ async function exportZip() {
         }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(faultData), 'Kvarovi');
-        zip.file(`Lokacije/${month}/${locId}/Kvarovi_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+        zip.file(`${locId}/Kvarovi_${locId}.xlsx`, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
       }
     }
 
