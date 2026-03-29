@@ -640,7 +640,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 
 // ===================================================
 // CONFIG & STATE
@@ -1402,9 +1402,10 @@ async function processReceipt(file, voiceContext) {
   overlay.classList.add('active');
 
   try {
+    const basePrompt = `Look at this receipt image. Categorize the purchase as exactly one of: "Gorivo", "Materijal" (building supplies, tools), "Cestarina" (tolls), or "Reprezentacija" (food/drinks), or a custom short description. Extract the store/vendor name. Extract the grand total amount paid. If a Location/Store ID (like "410.10" or "Z Centar") is visible or mentioned, extract it.`;
     const promptText = voiceContext
-      ? `Look at this receipt image. The user also said: "${voiceContext}". Extract the store/vendor name, grand total paid, and if the user mentioned a location/store ID number (like 410.10), extract that as location_id. Return ONLY the JSON.`
-      : 'Look at this receipt image. Extract the store/vendor name and the grand total amount paid. Return ONLY the JSON.';
+      ? `${basePrompt}\nAdditionally, the user said: "${voiceContext}". Use their speech to determine the Location ID. If their speech adds context (e.g. "boja za zid"), append it to the category (e.g. "Materijal - boja za zid"). Return ONLY strict JSON.`
+      : `${basePrompt}\nThe user did NOT say anything. Rely solely on the image to guess the category (e.g. INA/Crodux = Gorivo, Pevex/Bauhaus = Materijal). Leave location_id empty if it's not printed. Return ONLY strict JSON.`;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${settings.gemini}`,
