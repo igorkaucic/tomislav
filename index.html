@@ -256,12 +256,12 @@
     }
     .cam-cancel { width: 48px; height: 48px; color: #fff; opacity: .7; }
     .cam-capture {
-      width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(255,255,255,.15); padding: 6px;
+      width: 100px; height: 100px; border-radius: 50%;
+      background: rgba(255,255,255,.15); padding: 8px;
     }
     .shutter-ring {
       width: 100%; height: 100%; border-radius: 50%;
-      border: 4px solid #fff; background: transparent;
+      border: 5px solid #fff; background: transparent;
       transition: background .15s;
     }
     .cam-capture:active .shutter-ring { background: rgba(255,255,255,.5); }
@@ -545,12 +545,14 @@
 
 </div><!-- /app -->
 
-<!-- RECORDING OVERLAY -->
 <div class="recording-overlay" id="rec-overlay">
   <div class="mic-pulse"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
   <div class="recording-text" id="rec-label">Slušam...</div>
   <div class="transcript-live" id="transcript-live">Govori sada...</div>
-  <button class="btn-stop" onclick="stopSpeech()">■ Zaustavi</button>
+  <div style="display:flex;gap:16px;margin-top:12px">
+    <button class="btn-stop" onclick="stopSpeech()" style="border-color:var(--teal);color:var(--teal)">✅ Gotovo</button>
+    <button class="btn-stop" onclick="skipReceiptVoice()">⏩ Preskoči</button>
+  </div>
 </div>
 
 <!-- CAMERA OVERLAY -->
@@ -1320,10 +1322,13 @@ async function capturePhoto() {
 }
 
 // Voice-annotated receipt: listen for location context after photo
+let _receiptVoiceFile = null;
+
 function listenForReceiptContext(file) {
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRec) { processReceipt(file, ''); return; }
 
+  _receiptVoiceFile = file;
   const overlay = document.getElementById('rec-overlay');
   const label   = document.getElementById('rec-label');
   const live    = document.getElementById('transcript-live');
@@ -1333,19 +1338,10 @@ function listenForReceiptContext(file) {
   overlay.classList.add('active');
 
   let transcript = '';
-  let ended = false;
   recognition = new SpeechRec();
   recognition.lang = 'hr-HR';
   recognition.continuous = true;
   recognition.interimResults = true;
-
-  let silenceTimer = setTimeout(() => finish(), 6000);
-
-  function finish() {
-    if (ended) return;
-    ended = true;
-    try { recognition.stop(); } catch(e){}
-  }
 
   recognition.onresult = e => {
     let interim = '', finalText = '';
@@ -1355,19 +1351,25 @@ function listenForReceiptContext(file) {
     }
     if (finalText) transcript = finalText.trim();
     live.textContent = (transcript + ' ' + interim).trim() || 'Govori sada...';
-    clearTimeout(silenceTimer);
-    silenceTimer = setTimeout(() => finish(), 3000);
   };
 
   recognition.onerror = () => {};
   recognition.onend = () => {
-    ended = true;
     overlay.classList.remove('active');
-    processReceipt(file, transcript.trim());
+    const f = _receiptVoiceFile;
+    _receiptVoiceFile = null;
+    processReceipt(f, transcript.trim());
   };
 
   recognition.start();
-  setTimeout(() => finish(), 8000); // hard max
+}
+
+function skipReceiptVoice() {
+  try { recognition.stop(); } catch(e){}
+  document.getElementById('rec-overlay').classList.remove('active');
+  const f = _receiptVoiceFile;
+  _receiptVoiceFile = null;
+  if (f) processReceipt(f, '');
 }
 
 function closeCamera() {
