@@ -1,6 +1,6 @@
 // Version is passed as ?v=X.Y from index.html — drives cache key automatically
 const SW_VERSION = new URL(self.location).searchParams.get('v') || 'dev';
-const CACHE = 'tomislav-202603292023' + SW_VERSION;
+const CACHE = 'tomislav-202603292032' + SW_VERSION;
 const ASSETS = [
   './index.html',
   './manifest.json',

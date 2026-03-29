@@ -229,7 +229,7 @@
       background: #000; flex-direction: column;
     }
     .camera-overlay.active { display: flex; }
-    #cam-video { width: 100%; flex: 1; object-fit: cover; }
+    #cam-video { width: 100%; flex: 1; object-fit: cover; background: #000; }
     .cam-scan-frame {
       position: absolute; top: 15%; left: 8%; right: 8%; bottom: 25%;
       pointer-events: none;
@@ -244,13 +244,13 @@
     .cam-corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 6px 0; }
     .cam-scan-frame { z-index: 1; }
     .camera-controls {
-      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      position: absolute; bottom: 30px; left: 0; right: 0; z-index: 9999; pointer-events: none;
       display: flex; align-items: center; justify-content: space-around;
-      padding: 24px 30px 40px; background: linear-gradient(transparent, rgba(0,0,0,.7));
+      padding: 10px 30px 40px;
     }
     .cam-btn {
       border: none; background: none; cursor: pointer; display: flex;
-      align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent;
+      align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; pointer-events: auto;
     }
     .cam-cancel { width: 48px; height: 48px; color: #fff; opacity: .7; }
     .cam-capture {
@@ -404,7 +404,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2023</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2032</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -429,7 +429,6 @@
         <span class="pending-badge" id="pending-count">0</span>
         <span class="status-text" id="status-text">Nema novih stavki</span>
         <button class="sync-btn" id="export-btn" onclick="exportZip()">📦 Preuzmi ZIP</button>
-        <span style="font-size:10px;color:var(--muted);opacity:.5" id="version-label"></span>
       </div>
 
       <!-- Main Actions -->
@@ -544,9 +543,9 @@
   <button class="btn-stop" onclick="stopSpeech()">■ Zaustavi</button>
 </div>
 
-<!-- CAMERA OVERLAY (live viewfinder) -->
+<!-- CAMERA OVERLAY -->
 <div class="camera-overlay" id="cam-overlay">
-  <video id="cam-video" autoplay playsinline></video>
+  <video id="cam-video" autoplay playsinline muted></video>
   <div class="cam-scan-frame">
     <div class="cam-corner tl"></div>
     <div class="cam-corner tr"></div>
@@ -604,7 +603,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 
 // ===================================================
 // CONFIG & STATE
@@ -652,8 +651,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Inject version into UI
   document.title = 'Tomislav — Terenski Asistent v' + APP_VERSION;
-  const vLabel = document.getElementById('version-label');
-  if (vLabel) vLabel.textContent = 'v' + APP_VERSION;
+  const vTop = document.getElementById('app-version');
+  if (vTop) vTop.textContent = 'v' + APP_VERSION;
   
   await initDB();
   await loadSettings();
@@ -1284,52 +1283,60 @@ async function openCamera() {
 let openCameraForStandalone = false;
 
 async function capturePhoto() {
-  const video = document.getElementById('cam-video');
-  const canvas = document.getElementById('canvas-ocr');
-  
-  // Guard: video might not be ready yet
-  if (!video.videoWidth || !video.videoHeight) {
-    showToast('⏳ Kamera se učitava, pokušaj ponovo...', true);
-    return;
-  }
-  
-  // Instant visual feedback
-  video.pause();
-  video.style.opacity = '0.5';
-  showToast('📸 Račun se obrađuje...', true);
-  
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  
-  // Create blob BEFORE closing camera (stream must be alive for capture)
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-  
-  // NOW stop camera
-  closeCamera();
-  
-  if (!blob) {
-    showToast('❌ Greška pri snimanju fotografije', true);
-    return;
-  }
-  
-  const file = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
-  
-  if (openCameraForStandalone) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const now = new Date();
-    const dateStr = now.getDate().toString().padStart(2,'0') + '.' +
-                    (now.getMonth()+1).toString().padStart(2,'0') + '.' +
-                    now.getFullYear();
-    a.href = url;
-    a.download = `Scan_${dateStr}.jpg`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
-  } else {
-    await processReceipt(file);
+  try {
+    const video = document.getElementById('cam-video');
+    const canvas = document.getElementById('canvas-ocr');
+    
+    // Guard: video might not be ready yet
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      showToast('⏳ Kamera se učitava, pokušaj ponovo...', true);
+      alert('Kamera nije spremna! Video width je ' + (video ? video.videoWidth : 'null'));
+      return;
+    }
+    
+    // Instant visual feedback
+    try { video.pause(); } catch(e){}
+    video.style.opacity = '0.5';
+    showToast('📸 Račun se obrađuje...', true);
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Create blob BEFORE closing camera (stream must be alive for capture)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    
+    // NOW stop camera
+    closeCamera();
+    
+    if (!blob) {
+      showToast('❌ Greška pri snimanju fotografije', true);
+      alert('Nije moguće stvoriti blob od slike!');
+      return;
+    }
+    
+    const file = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
+    
+    if (openCameraForStandalone) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const now = new Date();
+      const dateStr = now.getDate().toString().padStart(2,'0') + '.' +
+                      (now.getMonth()+1).toString().padStart(2,'0') + '.' +
+                      now.getFullYear();
+      a.href = url;
+      a.download = `Scan_${dateStr}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
+    } else {
+      await processReceipt(file);
+    }
+  } catch(err) {
+    console.error(err);
+    alert('KRITIČNA GREŠKA U KAMERI: ' + err.message);
+    closeCamera();
   }
 }
 
