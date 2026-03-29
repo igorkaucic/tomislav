@@ -1361,13 +1361,6 @@ function listenForReceiptContext(file) {
   recognition.start();
 }
 
-function skipReceiptVoice() {
-  try { recognition.stop(); } catch(e){}
-  document.getElementById('rec-overlay').classList.remove('active');
-  const f = _receiptVoiceFile;
-  _receiptVoiceFile = null;
-  if (f) processReceipt(f, '');
-}
 
 function closeCamera() {
   if (cameraStream) {
