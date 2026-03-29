@@ -290,6 +290,62 @@
       background: rgba(155,93,229,.15); color: var(--purple); border-radius: 20px;
       padding: 3px 10px; font-size: 11px; font-weight: 600;
     }
+
+    /* ===== TRIP DETAIL / GALLERY OVERLAY ===== */
+    .gallery-overlay {
+      display: none; position: fixed; inset: 0; z-index: 160;
+      background: rgba(13,27,42,.98);
+      flex-direction: column; overflow-y: auto;
+    }
+    .gallery-overlay.active { display: flex; }
+    .gallery-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid rgba(0,212,180,.15);
+      flex-shrink: 0;
+    }
+    .gallery-header h2 { font-size: 18px; color: var(--teal); font-weight: 700; }
+    .gallery-close {
+      background: none; border: none; color: var(--muted); font-size: 28px;
+      cursor: pointer; padding: 4px 8px;
+    }
+    .gallery-body { flex: 1; padding: 16px; overflow-y: auto; }
+    .gallery-section { margin-bottom: 20px; }
+    .gallery-section h3 { font-size: 13px; color: var(--purple); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+    .gallery-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+    }
+    .gallery-item {
+      background: var(--surface); border-radius: 12px; overflow: hidden;
+      border: 1px solid rgba(155,93,229,.2);
+    }
+    .gallery-item img {
+      width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block;
+      cursor: pointer;
+    }
+    .gallery-item .gi-info {
+      padding: 8px 10px; font-size: 11px;
+    }
+    .gallery-item .gi-vendor { font-weight: 700; color: var(--text); }
+    .gallery-item .gi-amount { color: var(--purple); }
+    .gallery-actions {
+      display: flex; gap: 10px; padding: 16px; flex-shrink: 0;
+      border-top: 1px solid rgba(0,212,180,.15);
+    }
+    .gallery-actions button {
+      flex: 1; padding: 14px; border-radius: var(--radius); border: none;
+      font-weight: 700; font-size: 14px; cursor: pointer;
+    }
+    .gallery-dl { background: var(--teal); color: #0D1B2A; }
+    .gallery-back { background: var(--surface); color: var(--muted); }
+
+    /* Full-screen photo view */
+    .photo-fullscreen {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.95); align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .photo-fullscreen.active { display: flex; }
+    .photo-fullscreen img { max-width: 95%; max-height: 90vh; object-fit: contain; }
   </style>
 </head>
 <body>
@@ -300,7 +356,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1931</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1939</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -452,6 +508,21 @@
   <div class="receipt-card" id="receipt-card">
     <!-- Content filled dynamically -->
   </div>
+</div>
+
+<!-- TRIP GALLERY OVERLAY -->
+<div class="gallery-overlay" id="gallery-overlay">
+  <div class="gallery-header">
+    <h2 id="gallery-title">🚗 Put</h2>
+    <button class="gallery-close" onclick="closeGallery()">✕</button>
+  </div>
+  <div class="gallery-body" id="gallery-body"></div>
+  <div class="gallery-actions" id="gallery-actions"></div>
+</div>
+
+<!-- FULLSCREEN PHOTO -->
+<div class="photo-fullscreen" id="photo-fullscreen" onclick="this.classList.remove('active')">
+  <img id="photo-full-img" src="" alt="Račun">
 </div>
 
 <!-- UNDO BANNER -->
@@ -1301,9 +1372,16 @@ function initSwipe(el) {
       if (item) {
         lastDeleted = { store, data: item };
         await dbDelete(store, id);
+        // If we deleted the active trip, clear it!
+        if (store === 'putni_nalozi' && activeTrip && activeTrip.id === id) {
+          activeTrip = null;
+          hasLeftHome = false;
+          localStorage.removeItem('active_trip');
+          document.getElementById('trip-indicator').classList.remove('show');
+        }
         await updatePendingCount();
         setTimeout(() => loadHistory(), 300);
-        showUndoBanner(store === 'putni_nalozi' ? 'Putni nalog obrisan' : store === 'kvarovi' ? 'Kvar obrisan' : 'Račun obrisan');
+        showUndoBanner(store === 'putni_nalozi' ? 'Putni nalog obrisan' : 'Kvar obrisan');
       }
     } else {
       el.style.transform = 'translateX(0)';
@@ -1380,8 +1458,9 @@ async function exportZip() {
             let sheet2 = wb.worksheets[1];
             sheet2.getCell('F4').value = 'TOMISLAV BASIC';
             sheet2.getCell('F6').value = nalog.ruta;
-            sheet2.getCell('C11').value = dateObjOd;
-            sheet2.getCell('F11').value = dateObjDo;
+            // Use HR date strings for od/vom (fixes ExcelJS date serialization issue)
+            sheet2.getCell('C11').value = hrDateOd;
+            sheet2.getCell('F11').value = hrDateDo;
             sheet2.getCell('B16').value = hrDateOd;
             sheet2.getCell('C16').value = nalog.vrijeme_od || '';
             sheet2.getCell('D16').value = hrDateDo;
@@ -1477,24 +1556,93 @@ function downloadNativeExcel(buffer, filename) {
 }
 
 async function previewSpecificTrip(id) {
-  showToast('Generiram dokument i otvaram Excel...');
   try {
     const nalozi = await dbGetAll('putni_nalozi');
     const nalog = nalozi.find(n => n.id === id);
-    if (!nalog) throw new Error('Nalog nije pronađen u evidenciji');
+    if (!nalog) throw new Error('Nalog nije pronađen');
+
+    const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
+    const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : 'aktivan';
+    const expenses = nalog.troskovi || [];
+    const expenseTotal = expenses.reduce((s, e) => s + (e.iznos || 0), 0);
+
+    // Build gallery HTML
+    const overlay = document.getElementById('gallery-overlay');
+    document.getElementById('gallery-title').textContent = '🚗 ' + nalog.ruta;
+
+    let bodyHTML = `
+      <div class="gallery-section">
+        <h3>📋 Detalji puta</h3>
+        <div style="background:var(--surface);border-radius:var(--radius);padding:14px;font-size:13px;color:var(--muted);line-height:1.8">
+          <strong style="color:var(--text)">Ruta:</strong> ${nalog.ruta}<br>
+          <strong style="color:var(--text)">Polazak:</strong> ${hrDateOd} u ${nalog.vrijeme_od || '—'}<br>
+          <strong style="color:var(--text)">Povratak:</strong> ${hrDateDo}${nalog.vrijeme_do ? ' u ' + nalog.vrijeme_do : ''}<br>
+          <strong style="color:var(--text)">Status:</strong> ${nalog.status === 'aktivan' ? '🟢 Aktivan' : '⚪ Zatvoren'}
+          ${expenseTotal ? '<br><strong style="color:var(--text)">Ukupni troškovi:</strong> <span style="color:var(--purple);font-weight:700">' + expenseTotal.toFixed(2) + '€</span>' : ''}
+        </div>
+      </div>`;
+
+    if (expenses.length) {
+      bodyHTML += `
+        <div class="gallery-section">
+          <h3>🧾 Računi (${expenses.length})</h3>
+          <div class="gallery-grid">
+            ${expenses.map((exp, i) => {
+              const hasPhoto = exp.foto_base64 && exp.foto_base64.length > 100;
+              return `<div class="gallery-item">
+                ${hasPhoto
+                  ? `<img src="data:image/jpeg;base64,${exp.foto_base64}" alt="${exp.vendor}" onclick="showFullPhoto(this.src)">`
+                  : `<div style="width:100%;aspect-ratio:3/4;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:40px">🧾</div>`
+                }
+                <div class="gi-info">
+                  <div class="gi-vendor">${exp.vendor || exp.opis || 'Trošak'}</div>
+                  <div class="gi-amount">${exp.iznos.toFixed(2)}€ · ${exp.datum || ''}</div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    } else {
+      bodyHTML += `<div class="gallery-section"><div class="empty-state">Nema računa za ovaj put.</div></div>`;
+    }
+
+    document.getElementById('gallery-body').innerHTML = bodyHTML;
+    document.getElementById('gallery-actions').innerHTML = `
+      <button class="gallery-back" onclick="closeGallery()">← Natrag</button>
+      <button class="gallery-dl" onclick="closeGallery(); downloadTrip(${id})">📥 Preuzmi Excel</button>`;
+    overlay.classList.add('active');
+
+  } catch(e) {
+    console.error(e);
+    showToast('❌ ' + e.message, true);
+  }
+}
+
+function closeGallery() {
+  document.getElementById('gallery-overlay').classList.remove('active');
+}
+
+function showFullPhoto(src) {
+  document.getElementById('photo-full-img').src = src;
+  document.getElementById('photo-fullscreen').classList.add('active');
+}
+
+async function downloadTrip(id) {
+  showToast('Generiram dokument...');
+  try {
+    const nalozi = await dbGetAll('putni_nalozi');
+    const nalog = nalozi.find(n => n.id === id);
+    if (!nalog) throw new Error('Nalog nije pronađen');
 
     const resp = await fetch('templates/putni_nalog.xlsx');
-    if (!resp.ok) throw new Error('Nema xlsx predloška u mapi "templates".');
+    if (!resp.ok) throw new Error('Nema xlsx predloška.');
     const arrayBuffer = await resp.arrayBuffer();
     
-    // EXCELJS LOGIC
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(arrayBuffer);
     
     const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
     const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
-    const dateObjOd = new Date(nalog.datum_od + 'T00:00:00');
-    const dateObjDo = nalog.datum_do ? new Date(nalog.datum_do + 'T00:00:00') : dateObjOd;
 
     // SHEET 0: Deckblatt
     const sheet1 = wb.worksheets[0];
@@ -1507,14 +1655,15 @@ async function previewSpecificTrip(id) {
       let sheet2 = wb.worksheets[1];
       sheet2.getCell('F4').value = 'TOMISLAV BASIC';
       sheet2.getCell('F6').value = nalog.ruta;
-      sheet2.getCell('C11').value = dateObjOd;
-      sheet2.getCell('F11').value = dateObjDo;
+      // Use HR date strings instead of JS Date objects (fixes od/vom format)
+      sheet2.getCell('C11').value = hrDateOd;
+      sheet2.getCell('F11').value = hrDateDo;
       sheet2.getCell('B16').value = hrDateOd;
       sheet2.getCell('C16').value = nalog.vrijeme_od || '';
       sheet2.getCell('D16').value = hrDateDo;
       sheet2.getCell('E16').value = nalog.vrijeme_do || '';
 
-      // Write expenses into OBRAČUN OSTALIH TROŠKOVA section
+      // Write expenses
       const expenses = nalog.troskovi || [];
       const expenseRows = [29, 30, 31, 32, 33];
       let totalExpense = 0;
@@ -1539,7 +1688,7 @@ async function previewSpecificTrip(id) {
     const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
     const fileName = `Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`;
     downloadNativeExcel(buffer, fileName);
-    showToast('Otvori preuzetu datoteku u Excelu/Google Sheets!');
+    showToast('Otvori preuzetu datoteku!');
 
   } catch(e) {
     console.error(e);
