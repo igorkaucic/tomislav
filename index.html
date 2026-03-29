@@ -1451,12 +1451,15 @@ Known Croatian vendors: INA/Crodux/Petrol = Gorivo, Pevex/Bauhaus/Lesnina = Mate
   }
 }
 
-function showReceiptConfirmation(vendor, description, total, locationId) {
+async function showReceiptConfirmation(vendor, description, total, locationId) {
   const card = document.getElementById('receipt-card');
-  const tripLabel = activeTrip ? activeTrip.ruta : null;
+  const nalozi = await dbGetAll('putni_nalozi');
+  const tripOptions = nalozi.reverse().map(n => {
+    const hr = n.datum_od ? n.datum_od.split('-').reverse().join('.') : '';
+    return `<option value="${n.id}">${hr} - ${n.ruta}${n.status === 'aktivan' ? ' (Aktivan)' : ''}</option>`;
+  }).join('');
   card.innerHTML = `
     <h3>🧾 Potvrdi račun</h3>
-    ${tripLabel ? `<div class="receipt-trip-label">🚗 ${tripLabel}</div>` : ''}
     <div class="receipt-field">
       <label>Prodavač / Vendor</label>
       <input type="text" id="rc-vendor" value="${vendor}" placeholder="npr. PEVEX, INA...">
@@ -1472,6 +1475,13 @@ function showReceiptConfirmation(vendor, description, total, locationId) {
     <div class="receipt-field">
       <label>📍 Šifra lokacije / objekta</label>
       <input type="text" id="rc-location" value="${locationId || ''}" placeholder="npr. 410.10" inputmode="decimal" style="border-color:rgba(0,212,180,.5)">
+    </div>
+    <div class="receipt-field">
+      <label>🚗 Poveži s putnim nalogom (opcionalno)</label>
+      <select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px">
+        <option value="">-- Bez naloga --</option>
+        ${tripOptions}
+      </select>
     </div>
     <div class="receipt-btns">
       <button class="btn-cancel-receipt" onclick="closeReceiptOverlay()">✕ Odustani</button>
@@ -1499,7 +1509,7 @@ async function confirmReceipt() {
     datum:       formatDate(new Date()),
     foto_base64: pendingReceiptBase64 || null,
     location_id: locationId || null,
-    trip_id:     activeTrip ? activeTrip.id : null
+    trip_id:     document.getElementById('rc-trip').value ? parseInt(document.getElementById('rc-trip').value) : null
   };
 
   await dbAdd('racuni', receipt);
