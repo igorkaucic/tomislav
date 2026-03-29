@@ -1362,6 +1362,59 @@ function listenForReceiptContext(file) {
 }
 
 
+async function openReceiptEdit(receiptId) {
+  const racuni = await dbGetAll('racuni');
+  const nalozi = await dbGetAll('putni_nalozi');
+  const r = racuni.find(x => x.id === receiptId);
+  if (!r) return;
+
+  const tripOptions = nalozi.reverse().map(n => {
+    const hr = n.datum_od ? n.datum_od.split('-').reverse().join('.') : '';
+    const sel = r.trip_id === n.id ? ' selected' : '';
+    return '<option value="' + n.id + '"' + sel + '>' + hr + ' - ' + n.ruta + (n.status === 'aktivan' ? ' (Aktivan)' : '') + '</option>';
+  }).join('');
+
+  const card = document.getElementById('receipt-card');
+  pendingReceiptBase64 = r.foto_base64 || null;
+  card.innerHTML = '<h3>\u{1F9FE} Uredi ra\u010Dun</h3>' +
+    (r.foto_base64 ? '<img src="data:image/jpeg;base64,' + r.foto_base64 + '" style="width:100%;border-radius:8px;margin-bottom:12px">' : '') +
+    '<div class="receipt-field"><label>Prodava\u010D / Vendor</label><input type="text" id="rc-vendor" value="' + (r.vendor||'') + '"></div>' +
+    '<div class="receipt-field"><label>Opis tro\u0161ka</label><input type="text" id="rc-desc" value="' + (r.opis||'') + '"></div>' +
+    '<div class="receipt-field"><label>Iznos (\u20AC)</label><input type="number" id="rc-total" value="' + (r.iznos||'') + '" step="0.01" inputmode="decimal"></div>' +
+    '<div class="receipt-field"><label>\u{1F4CD} \u0160ifra lokacije</label><input type="text" id="rc-location" value="' + (r.location_id||'') + '" inputmode="decimal"></div>' +
+    '<div class="receipt-field"><label>\u{1F697} Putni nalog</label><select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px"><option value="">-- Bez naloga --</option>' + tripOptions + '</select></div>' +
+    '<div class="receipt-btns"><button class="btn-cancel-receipt" onclick="closeReceiptOverlay()">\u2715 Odustani</button><button class="btn-confirm" onclick="saveReceiptEdit(' + receiptId + ')">\u2705 Spremi</button></div>';
+  document.getElementById('receipt-overlay').classList.add('active');
+}
+
+async function saveReceiptEdit(receiptId) {
+  const vendor = document.getElementById('rc-vendor').value.trim();
+  const desc = document.getElementById('rc-desc').value.trim();
+  const total = parseFloat(document.getElementById('rc-total').value) || 0;
+  const locationId = document.getElementById('rc-location').value.trim();
+  const tripId = document.getElementById('rc-trip').value ? parseInt(document.getElementById('rc-trip').value) : null;
+
+  const racuni = await dbGetAll('racuni');
+  const r = racuni.find(x => x.id === receiptId);
+  if (!r) return;
+
+  r.vendor = vendor || 'Nepoznato';
+  r.opis = desc || vendor || 'Tro\u0161ak';
+  r.iznos = total;
+  r.location_id = locationId || null;
+  r.trip_id = tripId;
+
+  const tx = DB.transaction('racuni', 'readwrite');
+  tx.objectStore('racuni').put(r);
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+
+  closeReceiptOverlay();
+  await loadNotes();
+  await loadHistory();
+  await updatePendingCount();
+  showToast('\u2705 Ra\u010Dun a\u017Euriran');
+}
+
 function closeCamera() {
   if (cameraStream) {
     cameraStream.getTracks().forEach(t => t.stop());
@@ -1601,7 +1654,7 @@ async function loadNotes() {
         const trip = nalozi.find(n => n.id === r.trip_id);
         if (trip) linkedText = ' <span style="color:var(--teal);font-size:11px">[🚗 ' + trip.ruta + ']</span>';
       }
-      html += '<div class="history-item-wrap"><div class="history-delete-bg">🗑️ Obriši</div><div class="history-item racun" data-store="racuni" data-id="' + r.id + '" style="cursor:pointer"><div class="hi-title">🧾 ' + (r.vendor||'Nepoznato') + ': ' + (r.iznos||0).toFixed(2) + '€' + locBadge + linkedText + '</div><div class="hi-meta">' + (r.datum||'') + ' · ' + (r.opis||'') + '</div></div></div>';
+      html += '<div class="history-item-wrap"><div class="history-delete-bg">🗑️ Obriši</div><div class="history-item racun" data-store="racuni" data-id="' + r.id + '" onclick="openReceiptEdit(' + r.id + ')" style="cursor:pointer"><div class="hi-title">🧾 ' + (r.vendor||'Nepoznato') + ': ' + (r.iznos||0).toFixed(2) + '€' + locBadge + linkedText + '</div><div class="hi-meta">' + (r.datum||'') + ' · ' + (r.opis||'') + '</div></div></div>';
     }
   }
 
