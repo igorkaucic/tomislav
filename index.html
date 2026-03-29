@@ -13,6 +13,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.emailjs.com/dist/email.min.js"></script>
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
     /* ===== RESET & BASE ===== */
@@ -346,6 +349,23 @@
     }
     .photo-fullscreen.active { display: flex; }
     .photo-fullscreen img { max-width: 95%; max-height: 90vh; object-fit: contain; }
+
+    /* ===== MAP ===== */
+    #geomap {
+      width: 100%; height: 280px; border-radius: var(--radius);
+      border: 2px solid rgba(0,212,180,.2); margin-bottom: 8px;
+      z-index: 1;
+    }
+    .radius-slider-wrap {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    }
+    .radius-slider-wrap input[type=range] {
+      flex: 1; accent-color: var(--teal); height: 6px;
+    }
+    .radius-slider-wrap .radius-val {
+      color: var(--teal); font-weight: 700; font-size: 14px; min-width: 55px; text-align: right;
+    }
+    .map-hint { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -356,7 +376,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1939</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1940</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -443,18 +463,23 @@
           <label>EmailJS Public Key</label>
           <input type="text" id="s-emailjs-public" placeholder="xxxxxxxxxxxxxxx">
         </div>
-        <div class="field">
-          <label>Latitude doma (Dubrava)</label>
-          <input type="number" id="s-lat" placeholder="45.8314" step="0.0001">
+
+        <div class="settings-section" style="margin-top:16px;padding:0;background:transparent">
+          <h3>📍 Geozona — doma</h3>
+          <p class="map-hint">Povuci marker za pomicanje. Krug pokazuje radijus geoozone za automatsko zatvaranje puta.</p>
+          <div id="geomap"></div>
+          <div class="radius-slider-wrap">
+            <span style="font-size:12px;color:var(--muted)">500m</span>
+            <input type="range" id="s-radius-slider" min="500" max="5000" step="100" value="2000">
+            <span class="radius-val" id="s-radius-label">2000m</span>
+            <span style="font-size:12px;color:var(--muted)">5km</span>
+          </div>
+          <!-- Hidden inputs that hold the actual values -->
+          <input type="hidden" id="s-lat" value="45.8280">
+          <input type="hidden" id="s-lng" value="16.0530">
+          <input type="hidden" id="s-radius" value="2000">
         </div>
-        <div class="field">
-          <label>Longitude doma (Dubrava)</label>
-          <input type="number" id="s-lng" placeholder="16.0622" step="0.0001">
-        </div>
-        <div class="field">
-          <label>Radius geoozone (metara)</label>
-          <input type="number" id="s-radius" placeholder="500">
-        </div>
+
         <button class="save-btn" onclick="saveSettings()">💾 Spremi postavke</button>
       </div>
       
@@ -656,7 +681,7 @@ async function loadSettings() {
   settings = all[0] || {};
   if (settings.id === undefined) settings.id = 1;
   // Populate settings fields
-  ['gemini','email','emailjs-service','emailjs-template','emailjs-public','lat','lng','radius'].forEach(k => {
+  ['gemini','email','emailjs-service','emailjs-template','emailjs-public'].forEach(k => {
     const el = document.getElementById('s-' + k);
     if (el && settings[k]) el.value = settings[k];
   });
@@ -664,6 +689,16 @@ async function loadSettings() {
   if (!settings.lat)    settings.lat    = 45.8280;
   if (!settings.lng)    settings.lng    = 16.0530;
   if (!settings.radius) settings.radius = 2000;
+  // Sync hidden geo inputs
+  document.getElementById('s-lat').value = settings.lat;
+  document.getElementById('s-lng').value = settings.lng;
+  document.getElementById('s-radius').value = settings.radius;
+  // Sync slider
+  const slider = document.getElementById('s-radius-slider');
+  if (slider) {
+    slider.value = settings.radius;
+    document.getElementById('s-radius-label').textContent = settings.radius + 'm';
+  }
 }
 
 async function saveSettings() {
@@ -689,6 +724,72 @@ function showPage(name) {
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'history') loadHistory();
+  if (name === 'settings') {
+    setTimeout(() => initGeoMap(), 200); // Delay to let container render
+  }
+}
+
+// ===================================================
+// GEO MAP (Leaflet)
+// ===================================================
+let geoMap = null;
+let geoMarker = null;
+let geoCircle = null;
+
+function initGeoMap() {
+  const lat = parseFloat(document.getElementById('s-lat').value) || 45.8280;
+  const lng = parseFloat(document.getElementById('s-lng').value) || 16.0530;
+  const radius = parseFloat(document.getElementById('s-radius').value) || 2000;
+
+  if (geoMap) {
+    geoMap.invalidateSize();
+    return;
+  }
+
+  geoMap = L.map('geomap', {
+    center: [lat, lng],
+    zoom: 13,
+    zoomControl: true,
+    attributionControl: false
+  });
+
+  // Dark tile layer that matches the app theme
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(geoMap);
+
+  // Circle showing geofence radius
+  geoCircle = L.circle([lat, lng], {
+    radius: radius,
+    color: '#00D4B4',
+    fillColor: '#00D4B4',
+    fillOpacity: 0.12,
+    weight: 2
+  }).addTo(geoMap);
+
+  // Draggable marker
+  geoMarker = L.marker([lat, lng], { draggable: true }).addTo(geoMap);
+  geoMarker.bindPopup('🏠 Dom — Dubrava').openPopup();
+
+  geoMarker.on('dragend', () => {
+    const pos = geoMarker.getLatLng();
+    document.getElementById('s-lat').value = pos.lat.toFixed(6);
+    document.getElementById('s-lng').value = pos.lng.toFixed(6);
+    geoCircle.setLatLng(pos);
+  });
+
+  // Radius slider
+  const slider = document.getElementById('s-radius-slider');
+  const label = document.getElementById('s-radius-label');
+  slider.value = radius;
+  label.textContent = radius + 'm';
+
+  slider.addEventListener('input', () => {
+    const r = parseInt(slider.value);
+    label.textContent = r + 'm';
+    document.getElementById('s-radius').value = r;
+    geoCircle.setRadius(r);
+  });
 }
 
 // ===================================================
