@@ -248,6 +248,48 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .trip-active .trip-info strong { display: block; font-size: 14px; color: var(--teal); }
     .trip-active .trip-info span   { font-size: 12px; color: var(--muted); }
+
+    /* ===== RECEIPT CONFIRM OVERLAY ===== */
+    .receipt-overlay {
+      display: none; position: fixed; inset: 0; z-index: 150;
+      background: rgba(13,27,42,.97);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; gap: 16px;
+    }
+    .receipt-overlay.active { display: flex; }
+    .receipt-card {
+      background: var(--surface); border: 2px solid var(--purple);
+      border-radius: var(--radius); padding: 24px; width: 100%; max-width: 400px;
+    }
+    .receipt-card h3 { color: var(--purple); font-size: 16px; margin-bottom: 16px; }
+    .receipt-field { margin-bottom: 12px; }
+    .receipt-field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .receipt-field input {
+      width: 100%; background: var(--bg); border: 1px solid rgba(155,93,229,.3);
+      border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 16px;
+    }
+    .receipt-field input:focus { outline: none; border-color: var(--purple); }
+    .receipt-trip-label {
+      background: rgba(0,212,180,.1); border: 1px solid rgba(0,212,180,.3);
+      border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--teal);
+      text-align: center; margin-bottom: 8px;
+    }
+    .receipt-btns { display: flex; gap: 12px; margin-top: 16px; }
+    .receipt-btns button {
+      flex: 1; padding: 14px; border-radius: var(--radius); border: none;
+      font-weight: 700; font-size: 15px; cursor: pointer;
+    }
+    .btn-confirm { background: var(--purple); color: #fff; }
+    .btn-cancel-receipt { background: var(--surface); color: var(--muted); border: 1px solid rgba(122,149,176,.3) !important; }
+    .receipt-loading { text-align: center; color: var(--purple); font-size: 15px; }
+    .receipt-loading .spinner { font-size: 32px; animation: spin 1s linear infinite; display: block; margin-bottom: 12px; }
+
+    /* Expense chips in history */
+    .expense-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .expense-chip {
+      background: rgba(155,93,229,.15); color: var(--purple); border-radius: 20px;
+      padding: 3px 10px; font-size: 11px; font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -258,7 +300,7 @@
   <div class="topbar">
     <div>
       <h1>TOMISLAV</h1>
-      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2803.2213</span></div>
+      <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.1931</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
   </div>
@@ -306,7 +348,7 @@
         <div class="icon">📷</div>
         <div class="info">
           <strong>SKENIRAJ RAČUN</strong>
-          <span>Fotografiraj R1 račun → AI čita</span>
+          <span>Fotografiraj R1 račun → AI čita → dodaje na aktivan put</span>
         </div>
       </div>
 
@@ -405,6 +447,13 @@
 <!-- Canvas for OCR (hidden) -->
 <canvas id="canvas-ocr"></canvas>
 
+<!-- RECEIPT CONFIRM OVERLAY -->
+<div class="receipt-overlay" id="receipt-overlay">
+  <div class="receipt-card" id="receipt-card">
+    <!-- Content filled dynamically -->
+  </div>
+</div>
+
 <!-- UNDO BANNER -->
 <div class="undo-banner" id="undo-banner">
   <span id="undo-text">Obrisano</span>
@@ -429,8 +478,8 @@ let gpsWatcher = null;
 let lastTranscript = '';
 
 const DB_NAME    = 'tomislav_db';
-const DB_VERSION = 1;
-const STORES     = ['putni_nalozi', 'kvarovi', 'racuni', 'postavke'];
+const DB_VERSION = 2;
+const STORES     = ['putni_nalozi', 'kvarovi', 'postavke'];
 
 // ===================================================
 // REMOTE LOGGING TO PC
@@ -772,7 +821,8 @@ async function parsePutniNalog(text, dateStr, timeStr) {
     vrijeme_do: null,
     ruta:       route || text,
     status:     'aktivan',
-    raw:        text
+    raw:        text,
+    troskovi:   []  // Receipt expenses attached during travel
   };
 
   const id = await dbAdd('putni_nalozi', entry);
@@ -969,10 +1019,20 @@ function restoreActiveTrip() {
 }
 
 // ===================================================
-// CAMERA & OCR (Gemini)
+// CAMERA & OCR (Gemini 3.1 Flash Lite — Structured Output)
 // ===================================================
+let pendingReceiptBase64 = null; // Temp storage for photo being processed
+
 function openCamera() {
+  if (!activeTrip) {
+    // No active trip — ask if they want to create one or save standalone
+    if (confirm('Nema aktivnog puta. Račun će se spremiti samo kao fotografija s datumom. Nastavi?')) {
+      openCameraStandalone();
+    }
+    return;
+  }
   const input = document.getElementById('cam-file');
+  input.value = ''; // Reset so same file can be re-selected
   input.click();
   input.onchange = async () => {
     const file = input.files[0];
@@ -980,9 +1040,32 @@ function openCamera() {
     const url = URL.createObjectURL(file);
     document.getElementById('camera-preview').src = url;
     document.getElementById('cam-overlay').classList.add('active');
-    // Auto-process immediately
     await processReceipt(file);
     closeCamera();
+  };
+}
+
+function openCameraStandalone() {
+  const input = document.getElementById('cam-file');
+  input.value = '';
+  input.click();
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const base64 = await fileToBase64(file);
+    const now = new Date();
+    const dateStr = now.getDate().toString().padStart(2,'0') + '.' +
+                    (now.getMonth()+1).toString().padStart(2,'0') + '.' +
+                    now.getFullYear();
+    // Download as standalone scan
+    const blob = file;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Scan_${dateStr}.jpg`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📸 Sken spremljen: Scan_' + dateStr + '.jpg');
   };
 }
 
@@ -991,56 +1074,132 @@ function closeCamera()  { document.getElementById('cam-overlay').classList.remov
 
 async function processReceipt(file) {
   if (!settings.gemini) {
-    showToast('❌ Gemini API ključ nije postavljen!', true);
+    showToast('❌ Gemini API ključ nije postavljen! Idi u Postavke.', true);
     return;
   }
 
-  showToast('🔍 Čitam račun...');
-
   const base64 = await fileToBase64(file);
   const mimeType = file.type || 'image/jpeg';
+  pendingReceiptBase64 = base64;
+
+  // Show loading state in overlay
+  const overlay = document.getElementById('receipt-overlay');
+  const card = document.getElementById('receipt-card');
+  card.innerHTML = `
+    <div class="receipt-loading">
+      <span class="spinner">🔍</span>
+      AI čita račun...
+    </div>`;
+  overlay.classList.add('active');
 
   try {
+    // Gemini 3.1 Flash Lite with structured JSON output
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${settings.gemini}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${settings.gemini}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: 'Ovo je fotografija računa. Izvuci u JSON formatu: datum (YYYY-MM-DD), naziv_prodavaca (string), ukupni_iznos (broj), stavke (array stringova). Vrati SAMO JSON, bez komentara.' },
+              { text: 'Look at this receipt image. Extract the store/vendor name and the grand total amount paid. Return ONLY the JSON.' },
               { inline_data: { mime_type: mimeType, data: base64 } }
             ]
-          }]
+          }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'object',
+              properties: {
+                vendor:      { type: 'string', description: 'Store or vendor name from the receipt header' },
+                description: { type: 'string', description: 'Short description of what was purchased, e.g. Gorivo, Materijal, Alat' },
+                total:       { type: 'number', description: 'Grand total amount paid, as a decimal number' }
+              },
+              required: ['vendor', 'description', 'total']
+            }
+          }
         })
       }
     );
 
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('API greška: ' + res.status + ' ' + errText.substring(0, 200));
+    }
+
     const json = await res.json();
-    const raw  = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    const data = JSON.parse(cleaned);
+    const raw = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const data = JSON.parse(raw);
 
-    const now = new Date();
-    const entry = {
-      tip:       'racun',
-      datum:     data.datum || formatDate(now),
-      prodavac:  data.naziv_prodavaca || 'Nepoznato',
-      iznos:     data.ukupni_iznos || 0,
-      stavke:    (data.stavke || []).join(', '),
-      slika:     base64.substring(0, 100), // stored truncated reference
-      status:    'novi'
-    };
-
-    await dbAdd('racuni', entry);
-    await updatePendingCount();
-    showToast('✅ Račun: ' + entry.prodavac + ' ' + entry.iznos + '€');
+    // Show confirmation card
+    showReceiptConfirmation(data.vendor || '', data.description || '', data.total || 0);
 
   } catch(err) {
-    showToast('❌ Greška pri čitanju računa', true);
-    console.error(err);
+    console.error('Receipt OCR error:', err);
+    // Fallback: show empty form for manual entry
+    showReceiptConfirmation('', '', 0);
+    showToast('⚠️ AI nije mogao pročitati — popuni ručno', true);
   }
+}
+
+function showReceiptConfirmation(vendor, description, total) {
+  const card = document.getElementById('receipt-card');
+  const tripLabel = activeTrip ? activeTrip.ruta : 'Nema aktivnog puta';
+  card.innerHTML = `
+    <h3>🧾 Potvrdi račun</h3>
+    <div class="receipt-trip-label">🚗 ${tripLabel}</div>
+    <div class="receipt-field">
+      <label>Prodavač / Vendor</label>
+      <input type="text" id="rc-vendor" value="${vendor}" placeholder="npr. PEVEX, INA...">
+    </div>
+    <div class="receipt-field">
+      <label>Opis troška</label>
+      <input type="text" id="rc-desc" value="${description}" placeholder="npr. Gorivo, Materijal...">
+    </div>
+    <div class="receipt-field">
+      <label>Iznos (€)</label>
+      <input type="number" id="rc-total" value="${total || ''}" placeholder="0.00" step="0.01" inputmode="decimal">
+    </div>
+    <div class="receipt-btns">
+      <button class="btn-cancel-receipt" onclick="closeReceiptOverlay()">✕ Odustani</button>
+      <button class="btn-confirm" onclick="confirmReceipt()">✅ Potvrdi</button>
+    </div>`;
+}
+
+function closeReceiptOverlay() {
+  document.getElementById('receipt-overlay').classList.remove('active');
+  pendingReceiptBase64 = null;
+}
+
+async function confirmReceipt() {
+  const vendor = document.getElementById('rc-vendor').value.trim();
+  const desc   = document.getElementById('rc-desc').value.trim();
+  const total  = parseFloat(document.getElementById('rc-total').value) || 0;
+
+  if (!total) { showToast('❌ Unesi iznos!', true); return; }
+
+  // Build expense entry
+  const expense = {
+    vendor:      vendor || 'Nepoznato',
+    opis:        desc || vendor || 'Trošak',
+    iznos:       total,
+    datum:       formatDate(new Date()),
+    foto_base64: pendingReceiptBase64 || null
+  };
+
+  // Attach to active trip
+  if (activeTrip) {
+    if (!activeTrip.troskovi) activeTrip.troskovi = [];
+    activeTrip.troskovi.push(expense);
+    await dbPut('putni_nalozi', activeTrip);
+    localStorage.setItem('active_trip', JSON.stringify(activeTrip));
+    console.log('TROŠAK DODAN na put:', expense);
+  }
+
+  closeReceiptOverlay();
+  await updatePendingCount();
+  await loadHistory();
+  showToast(`✅ ${vendor}: ${total.toFixed(2)}€ dodano na put`);
 }
 
 function fileToBase64(file) {
@@ -1056,14 +1215,13 @@ function fileToBase64(file) {
 // HISTORY
 // ===================================================
 async function loadHistory() {
-  const [nalozi, kvarovi, racuni] = await Promise.all([
-    dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')
+  const [nalozi, kvarovi] = await Promise.all([
+    dbGetAll('putni_nalozi'), dbGetAll('kvarovi')
   ]);
 
   const all = [
     ...nalozi.map(r => ({...r, _type:'putni'})),
-    ...kvarovi.map(r => ({...r, _type:'kvar'})),
-    ...racuni.map(r => ({...r, _type:'racun'}))
+    ...kvarovi.map(r => ({...r, _type:'kvar'}))
   ].sort((a,b) => {
     const da = a.datum_od || a.datum || '';
     const db2 = b.datum_od || b.datum || '';
@@ -1077,31 +1235,30 @@ async function loadHistory() {
   }
 
   list.innerHTML = all.map(item => {
-    const storeMap = { putni: 'putni_nalozi', kvar: 'kvarovi', racun: 'racuni' };
+    const storeMap = { putni: 'putni_nalozi', kvar: 'kvarovi' };
     const store = storeMap[item._type];
     if (item._type === 'putni') {
       const hrDate = item.datum_od ? item.datum_od.split('-').reverse().join('.') : '';
+      const expenses = item.troskovi || [];
+      const expenseTotal = expenses.reduce((s, e) => s + (e.iznos || 0), 0);
+      const expenseChips = expenses.length ? `
+        <div class="expense-chips">
+          ${expenses.map(e => `<span class="expense-chip">${e.vendor || e.opis}: ${e.iznos.toFixed(2)}€</span>`).join('')}
+        </div>` : '';
       return `<div class="history-item-wrap">
         <div class="history-delete-bg">🗑️ Obriši</div>
         <div class="history-item" data-store="${store}" data-id="${item.id}" onclick="previewSpecificTrip(${item.id})" style="cursor:pointer">
-          <div class="hi-title">🚗 ${item.ruta}</div>
-          <div class="hi-meta">${hrDate} ${item.vrijeme_od} → ${item.datum_do ? item.datum_do.split('-').reverse().join('.') : 'aktivan'} ${item.vrijeme_do||''}</div>
-        </div>
-      </div>`;
-    } else if (item._type === 'kvar') {
-      return `<div class="history-item-wrap">
-        <div class="history-delete-bg">🗑️ Obriši</div>
-        <div class="history-item kvar" data-store="${store}" data-id="${item.id}">
-          <div class="hi-title">⚠️ ${item.lokacija}</div>
-          <div class="hi-meta">${item.datum} ${item.vrijeme} · ${item.opis.substring(0,80)}</div>
+          <div class="hi-title">🚗 ${item.ruta}${expenses.length ? ' · 🧾' + expenses.length : ''}</div>
+          <div class="hi-meta">${hrDate} ${item.vrijeme_od} → ${item.datum_do ? item.datum_do.split('-').reverse().join('.') : 'aktivan'} ${item.vrijeme_do||''}${expenseTotal ? ' · Troškovi: ' + expenseTotal.toFixed(2) + '€' : ''}</div>
+          ${expenseChips}
         </div>
       </div>`;
     } else {
       return `<div class="history-item-wrap">
         <div class="history-delete-bg">🗑️ Obriši</div>
-        <div class="history-item racun" data-store="${store}" data-id="${item.id}">
-          <div class="hi-title">🧾 ${item.prodavac}</div>
-          <div class="hi-meta">${item.datum} · ${item.iznos}€</div>
+        <div class="history-item kvar" data-store="${store}" data-id="${item.id}">
+          <div class="hi-title">⚠️ ${item.lokacija}</div>
+          <div class="hi-meta">${item.datum} ${item.vrijeme} · ${item.opis.substring(0,80)}</div>
         </div>
       </div>`;
     }
@@ -1173,11 +1330,12 @@ async function undoDelete() {
 }
 
 async function updatePendingCount() {
-  const [n,k,r] = await Promise.all([dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')]);
-  const count = n.length + k.length + r.length;
+  const [n,k] = await Promise.all([dbGetAll('putni_nalozi'), dbGetAll('kvarovi')]);
+  const totalExpenses = n.reduce((s, t) => s + (t.troskovi || []).length, 0);
+  const count = n.length + k.length;
   document.getElementById('pending-count').textContent = count;
   document.getElementById('status-text').textContent =
-    count === 0 ? 'Nema stavki' : count + ' stavki u evidenciji';
+    count === 0 ? 'Nema stavki' : count + ' stavki' + (totalExpenses ? ' · ' + totalExpenses + ' računa' : '');
 }
 
 // ===================================================
@@ -1186,8 +1344,8 @@ async function updatePendingCount() {
 async function exportZip() {
   showToast('📦 Generiram dokumente iz predloška...');
   try {
-    const [nalozi, kvarovi, racuni] = await Promise.all([
-      dbGetAll('putni_nalozi'), dbGetAll('kvarovi'), dbGetAll('racuni')
+    const [nalozi, kvarovi] = await Promise.all([
+      dbGetAll('putni_nalozi'), dbGetAll('kvarovi')
     ]);
 
     const zip = new JSZip();
@@ -1200,11 +1358,10 @@ async function exportZip() {
       if (resp.ok) templateData = await resp.arrayBuffer();
     } catch(e) { console.error('Fali template', e); }
 
-    // === SHEET 1: POJEDINACNI PUTNI NALOZI (STANDALONE OFFLINE) ===
+    // === PUTNI NALOZI S TROŠKOVIMA ===
     if (nalozi.length) {
       for (const nalog of nalozi) {
         if (templateData && typeof ExcelJS !== 'undefined') {
-          // Edit existing template keeping formatting 100%
           const wb = new ExcelJS.Workbook();
           await wb.xlsx.load(templateData);
           const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
@@ -1218,23 +1375,56 @@ async function exportZip() {
           sheet1.getCell('C17').value = hrDateOd + '.';
           sheet1.getCell('E17').value = nalog.ruta;
           
-          // SHEET 1: Aufstellung (Putni Racun)
+          // SHEET 1: Aufstellung (Putni Račun)
           if (wb.worksheets.length > 1) {
             let sheet2 = wb.worksheets[1];
             sheet2.getCell('F4').value = 'TOMISLAV BASIC';
             sheet2.getCell('F6').value = nalog.ruta;
-            sheet2.getCell('C11').value = dateObjOd;  // Date object
-            sheet2.getCell('F11').value = dateObjDo;   // Date object
+            sheet2.getCell('C11').value = dateObjOd;
+            sheet2.getCell('F11').value = dateObjDo;
             sheet2.getCell('B16').value = hrDateOd;
             sheet2.getCell('C16').value = nalog.vrijeme_od || '';
             sheet2.getCell('D16').value = hrDateDo;
             sheet2.getCell('E16').value = nalog.vrijeme_do || '';
+
+            // === TROŠKOVI (OBRAČUN OSTALIH TROŠKOVA) → B29-H33 ===
+            const expenses = nalog.troskovi || [];
+            const expenseRows = [29, 30, 31, 32, 33]; // Max 5 expense rows
+            let totalExpense = 0;
+            for (let i = 0; i < Math.min(expenses.length, expenseRows.length); i++) {
+              const row = expenseRows[i];
+              const exp = expenses[i];
+              const label = exp.opis || exp.vendor || 'Trošak';
+              sheet2.getCell('B' + row).value = label;
+              sheet2.getCell('H' + row).value = exp.iznos;
+              sheet2.getCell('I' + row).value = exp.iznos + '€';
+              totalExpense += exp.iznos;
+            }
+            // Update UKUPNO at I34
+            if (totalExpense > 0) {
+              // Daily allowance from H16 (if exists)
+              const dnevnica = parseFloat(sheet2.getCell('H16').value) || 0;
+              const grandTotal = dnevnica + totalExpense;
+              sheet2.getCell('I34').value = grandTotal.toFixed(2) + '€';
+              // Update final totals
+              sheet2.getCell('E46').value = grandTotal.toFixed(2) + '€';
+              sheet2.getCell('E50').value = grandTotal.toFixed(2) + '€';
+            }
           }
           
           const buffer = await wb.xlsx.writeBuffer();
           const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
           const fileName = `PutniNalozi/${month}/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`;
           zip.file(fileName, buffer);
+
+          // Also save receipt photos as separate files
+          for (let i = 0; i < (nalog.troskovi || []).length; i++) {
+            const exp = nalog.troskovi[i];
+            if (exp.foto_base64) {
+              const photoName = `PutniNalozi/${month}/Racuni/${exp.vendor || 'scan'}_${exp.datum || hrDateOd}.jpg`;
+              zip.file(photoName, exp.foto_base64, { base64: true });
+            }
+          }
         } else {
           // Fallback if template is missing
           const wb = XLSX.utils.book_new();
@@ -1245,7 +1435,7 @@ async function exportZip() {
       }
     }
 
-    // === SHEET 2: Kvarovi ===
+    // === KVAROVI ===
     if (kvarovi.length) {
       const kvarData = kvarovi.map(r => ({
         'Datum': r.datum||'', 'Vrijeme': r.vrijeme||'', 'Lokacija': r.lokacija||'', 'Opis kvara': r.opis||'', 'Status': r.status||''
@@ -1253,16 +1443,6 @@ async function exportZip() {
       const wb2 = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(kvarData), 'Kvarovi');
       zip.file(`Kvarovi/${month}/kvarovi_zbirno_${month}.xlsx`, XLSX.write(wb2, { type: 'array', bookType: 'xlsx' }));
-    }
-
-    // === SHEET 3: Računi ===
-    if (racuni.length) {
-      const racunData = racuni.map(r => ({
-        'Datum': r.datum||'', 'Prodavač': r.prodavac||'', 'Iznos (€)': r.iznos||0, 'Stavke': r.stavke||''
-      }));
-      const wb3 = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(racunData), 'Računi');
-      zip.file(`Racuni/${month}/racuni_zbirno_${month}.xlsx`, XLSX.write(wb3, { type: 'array', bookType: 'xlsx' }));
     }
 
     // GENERATE ZIP NATIVELY ON PHONE
@@ -1333,6 +1513,26 @@ async function previewSpecificTrip(id) {
       sheet2.getCell('C16').value = nalog.vrijeme_od || '';
       sheet2.getCell('D16').value = hrDateDo;
       sheet2.getCell('E16').value = nalog.vrijeme_do || '';
+
+      // Write expenses into OBRAČUN OSTALIH TROŠKOVA section
+      const expenses = nalog.troskovi || [];
+      const expenseRows = [29, 30, 31, 32, 33];
+      let totalExpense = 0;
+      for (let i = 0; i < Math.min(expenses.length, expenseRows.length); i++) {
+        const row = expenseRows[i];
+        const exp = expenses[i];
+        sheet2.getCell('B' + row).value = exp.opis || exp.vendor || 'Trošak';
+        sheet2.getCell('H' + row).value = exp.iznos;
+        sheet2.getCell('I' + row).value = exp.iznos + '€';
+        totalExpense += exp.iznos;
+      }
+      if (totalExpense > 0) {
+        const dnevnica = parseFloat(sheet2.getCell('H16').value) || 0;
+        const grandTotal = dnevnica + totalExpense;
+        sheet2.getCell('I34').value = grandTotal.toFixed(2) + '€';
+        sheet2.getCell('E46').value = grandTotal.toFixed(2) + '€';
+        sheet2.getCell('E50').value = grandTotal.toFixed(2) + '€';
+      }
     }
 
     const buffer = await wb.xlsx.writeBuffer();
