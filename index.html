@@ -1402,10 +1402,18 @@ async function processReceipt(file, voiceContext) {
   overlay.classList.add('active');
 
   try {
-    const basePrompt = `Look at this receipt image. Categorize the purchase as exactly one of: "Gorivo", "Materijal" (building supplies, tools), "Cestarina" (tolls), or "Reprezentacija" (food/drinks), or a custom short description. Extract the store/vendor name. Extract the grand total amount paid. If a Location/Store ID (like "410.10" or "Z Centar") is visible or mentioned, extract it.`;
+    const basePrompt = `CRITICAL: If this image is dark, blurry, not a receipt, or unreadable — return ALL fields as empty strings and total as 0. Do NOT guess or hallucinate data you cannot see.
+
+If the image IS a readable receipt:
+- vendor: Extract the store/vendor name from the receipt header/logo.
+- description: Categorize as "Gorivo", "Materijal", "Cestarina", "Reprezentacija", "Alat", or a short custom description based on what was purchased.
+- total: Extract the grand total amount paid as a decimal number.
+- location_id: Extract only if explicitly visible on the receipt or mentioned by the user.
+
+Known Croatian vendors: INA/Crodux/Petrol = Gorivo, Pevex/Bauhaus/Lesnina = Materijal, HAC/ENC = Cestarina.`;
     const promptText = voiceContext
-      ? `${basePrompt}\nAdditionally, the user said: "${voiceContext}". Use their speech to determine the Location ID. If their speech adds context (e.g. "boja za zid"), append it to the category (e.g. "Materijal - boja za zid"). Return ONLY strict JSON.`
-      : `${basePrompt}\nThe user did NOT say anything. Rely solely on the image to guess the category (e.g. INA/Crodux = Gorivo, Pevex/Bauhaus = Materijal). Leave location_id empty if it's not printed. Return ONLY strict JSON.`;
+      ? `${basePrompt}\nThe user also said: "${voiceContext}". Use their speech for location_id and to refine the description (e.g. "Materijal - boja za zid"). Return ONLY strict JSON.`
+      : `${basePrompt}\nThe user did NOT say anything. Rely solely on the image. Leave location_id as empty string if not printed on receipt. Return ONLY strict JSON.`;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${settings.gemini}`,
