@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.26';
+const APP_VERSION = '3.27';
 
 // ===================================================
 // CONFIG & STATE
@@ -2708,17 +2708,30 @@ async function uploadToGoogleDrive() {
 
       for (const [locName, faults] of Object.entries(byLocation)) {
         const kvLocFolder = await gdriveFindOrCreateFolder(locName, token, notesMonthId);
-        const faultData = faults.map(k => ({
-          'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 
-          'Lokacija': k.lokacija || '', 'Šifra/Objekt': k.location_id || '',
-          'Opis': k.opis || '', 'Status': k.status || ''
-        }));
-        const wb3 = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(faultData), 'Podsjetnici');
-        const xlsData = XLSX.write(wb3, { type: 'array', bookType: 'xlsx' });
-        const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        await gdriveUploadFile(xlsBlob, `Podsjetnici_${locName}.xlsx`, kvLocFolder, token);
-        uploadCount++;
+        
+        // Group by Date to create individual files per date
+        const byDate = {};
+        for(const f of faults) {
+            const hrD = f.datum ? f.datum.split('-').reverse().join('.') : 'nedefinirano';
+            if(!byDate[hrD]) byDate[hrD] = [];
+            byDate[hrD].push(f);
+        }
+
+        for (const [dateStr, dateFaults] of Object.entries(byDate)) {
+            const faultData = dateFaults.map(k => ({
+              'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 
+              'Lokacija': k.lokacija || '', 'Šifra/Objekt': k.location_id || '',
+              'Opis': k.opis || '', 'Status': k.status || ''
+            }));
+            const wb3 = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(faultData), 'Podsjetnici');
+            const xlsData = XLSX.write(wb3, { type: 'array', bookType: 'xlsx' });
+            const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            const cleanLoc = locName.replace(/\s+/g, '_');
+            await gdriveUploadFile(xlsBlob, `Podsjetnik_${cleanLoc}_${dateStr}.xlsx`, kvLocFolder, token);
+            uploadCount++;
+        }
       }
     }
 
