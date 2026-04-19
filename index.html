@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.24';
+const APP_VERSION = '3.25';
 
 // ===================================================
 // CONFIG & STATE
@@ -2588,13 +2588,17 @@ async function uploadToGoogleDrive() {
     // === CREATE ROOT FOLDER: Putni_Nalozi ===
     showToast('📁 Sinkroniziram Drive (1:1 Mirror)...');
     const rootId = await gdriveFindOrCreateFolder('Putni_Nalozi', token);
-    
-    // === CREATE OR FIND MONTH SUBFOLDER ===
     const monthId = await gdriveFindOrCreateFolder(monthFolder, token, rootId);
 
     // DESTRUCTIVE SYNC: Wipe the month folder completely before re-uploading
-    showToast('🧹 Čistim stare datoteke...');
+    showToast('🧹 Čistim stare naloge...');
     await gdriveEmptyFolder(monthId, token);
+
+    // === CREATE ROOT FOLDER: Podsjetnici ===
+    const notesRootId = await gdriveFindOrCreateFolder('Podsjetnici', token);
+    const notesMonthId = await gdriveFindOrCreateFolder(monthFolder, token, notesRootId);
+    showToast('🧹 Čistim stare podsjetnike...');
+    await gdriveEmptyFolder(notesMonthId, token);
 
     // === PUTNI NALOZI (Excel files) ===
     const closedNalozi = nalozi.filter(n => n.status === 'zatvoren');
@@ -2694,17 +2698,30 @@ async function uploadToGoogleDrive() {
 
     // === KVAROVI / PODSJETNICI ===
     if (kvarovi.length) {
-      const kvId = await gdriveFindOrCreateFolder('Podsjetnici', token, monthId);
-      const faultData = kvarovi.map(k => ({
-        'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 'Lokacija': k.lokacija || '',
-        'Opis': k.opis || '', 'Status': k.status || ''
-      }));
-      const wb3 = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(faultData), 'Podsjetnici');
-      const xlsData = XLSX.write(wb3, { type: 'array', bookType: 'xlsx' });
-      const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      await gdriveUploadFile(xlsBlob, `Podsjetnici_${monthFolder}.xlsx`, kvId, token);
-      uploadCount++;
+      const byLocation = {};
+      for (const k of kvarovi) {
+        let locName = k.location_id || k.lokacija || 'Razno';
+        // sanitize for folder name
+        locName = locName.split(',')[0].replace(/[^a-zA-ZčćšžđČĆŠŽĐ0-9\-_ ]/g, '').trim(); 
+        if (!locName) locName = 'Nepoznato';
+        if (!byLocation[locName]) byLocation[locName] = [];
+        byLocation[locName].push(k);
+      }
+
+      for (const [locName, faults] of Object.entries(byLocation)) {
+        const kvLocFolder = await gdriveFindOrCreateFolder(locName, token, notesMonthId);
+        const faultData = faults.map(k => ({
+          'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 
+          'Lokacija': k.lokacija || '', 'Šifra/Objekt': k.location_id || '',
+          'Opis': k.opis || '', 'Status': k.status || ''
+        }));
+        const wb3 = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(faultData), 'Podsjetnici');
+        const xlsData = XLSX.write(wb3, { type: 'array', bookType: 'xlsx' });
+        const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        await gdriveUploadFile(xlsBlob, `Podsjetnici_${locName}.xlsx`, kvLocFolder, token);
+        uploadCount++;
+      }
     }
 
     showToast(`✅ Poslano ${uploadCount} datoteka na Google Drive!`);
