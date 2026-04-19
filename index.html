@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.25';
+const APP_VERSION = '3.26';
 
 // ===================================================
 // CONFIG & STATE
@@ -2097,7 +2097,6 @@ async function exportZip() {
             sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
             sheet2.getCell('F8').value = "TEHNIČAR";
             sheet2.getCell('F5').value = (nalog.ruta || '').toUpperCase();
-            sheet2.getCell('F6').value = (nalog.ruta || '').toUpperCase();
             sheet2.getCell('C11').value = hrDateOd;
             sheet2.getCell('F11').value = hrDateDo;
             sheet2.getCell('B16').value = hrDateOd;
@@ -2625,7 +2624,6 @@ async function uploadToGoogleDrive() {
               sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
               sheet2.getCell('F8').value = "TEHNIČAR";
               sheet2.getCell('F5').value = (nalog.ruta || '').toUpperCase();
-              sheet2.getCell('F6').value = (nalog.ruta || '').toUpperCase();
 
               // Insert expenses in GDrive generator too!
               const expenseRows = [29, 30, 31, 32, 33];
