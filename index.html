@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.15';
+const APP_VERSION = '3.16';
 
 // ===================================================
 // CONFIG & STATE
@@ -2481,20 +2481,23 @@ async function getGdriveToken() {
   });
 }
 
-async function gdriveFindOrCreateFolder(name, token) {
+async function gdriveFindOrCreateFolder(name, token, parentId) {
   // Search for existing folder
-  const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const searchResp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  if (parentId) q += ` and '${parentId}' in parents`;
+  const searchResp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`, {
     headers: { 'Authorization': 'Bearer ' + token }
   });
   const searchData = await searchResp.json();
   if (searchData.files && searchData.files.length > 0) return searchData.files[0].id;
 
   // Create folder
+  const meta = { name: name, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) meta.parents = [parentId];
   const createResp = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder' })
+    body: JSON.stringify(meta)
   });
   const folder = await createResp.json();
   return folder.id;
@@ -2523,18 +2526,25 @@ async function uploadToGoogleDrive() {
     const token = await getGdriveToken();
 
     showToast('📦 Generiram dokumente...');
-    // Reuse the export logic to build a ZIP blob
     const nalozi = await dbGetAll('putni_nalozi');
     const kvarovi = await dbGetAll('kvarovi');
     const racuni = await dbGetAll('racuni');
     const now = new Date();
     const month = now.toLocaleString('hr-HR', { month: 'long', year: 'numeric' });
+    const monthFolder = month.charAt(0).toUpperCase() + month.slice(1);
 
-    const zip = new JSZip();
+    let uploadCount = 0;
 
-    // === PUTNI NALOZI ===
+    // === CREATE ROOT FOLDER: Putni_Nalozi ===
+    showToast('📁 Kreiram foldere na Drive...');
+    const rootId = await gdriveFindOrCreateFolder('Putni_Nalozi', token);
+    // === CREATE MONTH SUBFOLDER ===
+    const monthId = await gdriveFindOrCreateFolder(monthFolder, token, rootId);
+
+    // === PUTNI NALOZI (Excel files) ===
     const closedNalozi = nalozi.filter(n => n.status === 'zatvoren');
     if (closedNalozi.length) {
+      const naloziId = await gdriveFindOrCreateFolder('Nalozi', token, monthId);
       for (const nalog of closedNalozi) {
         const hrDateOd = nalog.datum_od ? nalog.datum_od.split('-').reverse().join('.') : '';
         try {
@@ -2554,14 +2564,19 @@ async function uploadToGoogleDrive() {
             }
             const buffer = await wb.xlsx.writeBuffer();
             const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
-            zip.file(`Putni_Nalozi/Putni_nalog_${hrDateOd}_${cityForFile}.xlsx`, buffer);
+            const filename = `Putni_nalog_${hrDateOd}_${cityForFile}.xlsx`;
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            showToast(`☁️ Upload: ${filename}...`);
+            await gdriveUploadFile(blob, filename, naloziId, token);
+            uploadCount++;
           }
         } catch(e) { console.warn('Template skip:', e); }
       }
     }
 
-    // === RAČUNI ===
+    // === RAČUNI PO LOKACIJAMA (Receipts grouped by Location) ===
     if (racuni.length) {
+      const racuniRootId = await gdriveFindOrCreateFolder('Racuni', token, monthId);
       const byLocation = {};
       for (const r of racuni) {
         const loc = r.location_id || 'Bez_lokacije';
@@ -2569,26 +2584,48 @@ async function uploadToGoogleDrive() {
         byLocation[loc].push(r);
       }
       for (const [locId, receipts] of Object.entries(byLocation)) {
+        const locFolderId = await gdriveFindOrCreateFolder(locId, token, racuniRootId);
+        // Upload receipt photos
         for (const r of receipts) {
-          const hrDate = r.datum ? r.datum.split('-').reverse().join('.') : '';
-          if (r.foto_base64) zip.file(`${locId}/${r.vendor || 'scan'}_${hrDate}.jpg`, r.foto_base64, { base64: true });
+          if (r.foto_base64) {
+            const hrDate = r.datum ? r.datum.split('-').reverse().join('.') : '';
+            const imgFilename = `${r.vendor || 'scan'}_${hrDate}.jpg`;
+            const byteString = atob(r.foto_base64);
+            const ab = new Uint8Array(byteString.length);
+            for (let i = 0; i < byteString.length; i++) ab[i] = byteString.charCodeAt(i);
+            const imgBlob = new Blob([ab], { type: 'image/jpeg' });
+            await gdriveUploadFile(imgBlob, imgFilename, locFolderId, token);
+            uploadCount++;
+          }
         }
+        // Upload summary Excel
         const summaryData = receipts.map(r => ({ 'Datum': r.datum || '', 'Vendor': r.vendor || '', 'Opis': r.opis || '', 'Iznos (€)': r.iznos || 0, 'Lokacija': locId }));
         const wb2 = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(summaryData), 'Računi');
-        zip.file(`${locId}/Racuni_zbirno_${locId}.xlsx`, XLSX.write(wb2, { type: 'array', bookType: 'xlsx' }));
+        const xlsData = XLSX.write(wb2, { type: 'array', bookType: 'xlsx' });
+        const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        await gdriveUploadFile(xlsBlob, `Racuni_zbirno_${locId}.xlsx`, locFolderId, token);
+        uploadCount++;
       }
     }
 
-    const content = await zip.generateAsync({ type: 'blob' });
-    const filename = `Basic_Assistant_${month.replace(/\s/g, '_')}.zip`;
+    // === KVAROVI / PODSJETNICI ===
+    if (kvarovi.length) {
+      const kvId = await gdriveFindOrCreateFolder('Podsjetnici', token, monthId);
+      const faultData = kvarovi.map(k => ({
+        'Datum': k.datum || '', 'Vrijeme': k.vrijeme || '', 'Lokacija': k.lokacija || '',
+        'Opis': k.opis || '', 'Status': k.status || ''
+      }));
+      const wb3 = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb3, XLSX.utils.json_to_sheet(faultData), 'Podsjetnici');
+      const xlsData = XLSX.write(wb3, { type: 'array', bookType: 'xlsx' });
+      const xlsBlob = new Blob([xlsData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      await gdriveUploadFile(xlsBlob, `Podsjetnici_${monthFolder}.xlsx`, kvId, token);
+      uploadCount++;
+    }
 
-    showToast('☁️ Šaljem na Google Drive...');
-    const folderId = await gdriveFindOrCreateFolder('Basic Assistant', token);
-    const result = await gdriveUploadFile(content, filename, folderId, token);
-
-    showToast('✅ Uspješno poslano na Google Drive!');
-    console.log('Google Drive upload result:', result);
+    showToast(`✅ Poslano ${uploadCount} datoteka na Google Drive!`);
+    console.log('Google Drive upload complete:', uploadCount, 'files');
 
   } catch(err) {
     console.error('Google Drive upload error:', err);
