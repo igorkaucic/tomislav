@@ -743,7 +743,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.12';
+const APP_VERSION = '3.13';
 
 // ===================================================
 // CONFIG & STATE
@@ -2159,13 +2159,30 @@ async function exportZip() {
 
     // GENERATE ZIP
     const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a   = document.createElement('a');
-    a.href     = url;
-    a.download = `Tomislav_${month}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('✅ ZIP lokalno iskreiran!');
+    const filename = `Tomislav_${month}.zip`;
+    const zipFile = new File([content], filename, { type: 'application/zip' });
+
+    if (navigator.canShare && navigator.canShare({ files: [zipFile] })) {
+      try {
+        await navigator.share({
+          files: [zipFile],
+          title: `Basic Asistent - ${month}`,
+          text: `Evo generiranih naloga za mjesec ${month}.`
+        });
+        showToast('✅ ZIP uspješno proslijeđen!');
+      } catch (err) {
+        if (err.name !== 'AbortError') throw err; // User cancelled share
+      }
+    } else {
+      // Fallback
+      const url = URL.createObjectURL(content);
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('✅ ZIP preuzet u Downloads!');
+    }
 
   } catch(err) {
     showToast('❌ Greška pri izvozu', true);
