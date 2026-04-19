@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.27';
+const APP_VERSION = '3.28';
 
 // ===================================================
 // CONFIG & STATE
@@ -944,18 +944,19 @@ function startSpeech(mode) {
 
   let userStopped = false;
 
+  let lastFinalIndex = 0;
+
   recognition.onresult = e => {
     let interim = '';
-    let finalText = '';
-    // Rebuild ALL results from scratch each time (no duplicates)
-    for (let i = 0; i < e.results.length; i++) {
+    // Only process NEW final results to avoid duplicating already-captured words
+    for (let i = lastFinalIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) {
-        finalText += e.results[i][0].transcript + ' ';
+        lastTranscript += (lastTranscript ? ' ' : '') + e.results[i][0].transcript.trim();
+        lastFinalIndex = i + 1;
       } else {
         interim += e.results[i][0].transcript;
       }
     }
-    if (finalText) lastTranscript = finalText.trim();
     live.textContent = (lastTranscript + ' ' + interim).trim() || 'Govori sada...';
   };
 
@@ -1157,6 +1158,9 @@ async function endTrip() {
   await updatePendingCount();
   await loadHistory();
   showToast('🏠 Dobrodošao kući! Dnevnica: ' + dnevnica.toFixed(2) + '€');
+
+  // Auto-push to Google Drive
+  try { await uploadToGoogleDrive(); } catch(e) { console.warn('Auto-sync nalog:', e); }
 }
 
 function addCityToTrip(cityName) {
@@ -1329,6 +1333,9 @@ async function parseKvar(text, dateStr, timeStr) {
   await updatePendingCount();
   await loadNotes();
   console.log('SAMOSTALNI KVAR SPREMLJEN:', note);
+
+  // Auto-push to Google Drive
+  try { await uploadToGoogleDrive(); } catch(e) { console.warn('Auto-sync podsjetnik:', e); }
 }
 
 // ===================================================
