@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.17';
+const APP_VERSION = '3.18';
 
 // ===================================================
 // CONFIG & STATE
@@ -1603,6 +1603,9 @@ async function openReceiptEdit(receiptId) {
     return '<option value="' + n.id + '"' + sel + '>' + hr + ' - ' + n.ruta + (n.status === 'aktivan' ? ' (Aktivan)' : '') + '</option>';
   }).join('');
 
+  const typeOptions = '<option value="da"' + (r.ide_u_nalog !== false ? ' selected' : '') + '>Osobni (Zbroji u nalog)</option>' +
+                      '<option value="ne"' + (r.ide_u_nalog === false ? ' selected' : '') + '>Službeni (NE zbrajaj u nalog)</option>';
+
   const card = document.getElementById('receipt-card');
   pendingReceiptBase64 = r.foto_base64 || null;
   card.innerHTML = '<h3>\u{1F9FE} Uredi ra\u010Dun</h3>' +
@@ -1611,7 +1614,8 @@ async function openReceiptEdit(receiptId) {
     '<div class="receipt-field"><label>Opis tro\u0161ka</label><input type="text" id="rc-desc" value="' + (r.opis||'') + '"></div>' +
     '<div class="receipt-field"><label>Iznos (\u20AC)</label><input type="number" id="rc-total" value="' + (r.iznos||'') + '" step="0.01" inputmode="decimal"></div>' +
     '<div class="receipt-field"><label>\u{1F4CD} \u0160ifra lokacije</label><input type="text" id="rc-location" value="' + (r.location_id||'') + '" inputmode="decimal"></div>' +
-    '<div class="receipt-field"><label>\u{1F697} Putni nalog</label><select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px"><option value="">-- Bez naloga --</option>' + tripOptions + '</select></div>' +
+    '<div class="receipt-field"><label>\u{1F697} Poveži na put</label><select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px;margin-bottom:6px"><option value="">-- Bez naloga --</option>' + tripOptions + '</select></div>' +
+    '<div class="receipt-field"><label>🧾 Vrsta troška (Zbrajanje)</label><select id="rc-type" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(0,212,180,.3);border-radius:6px;font-size:14px">' + typeOptions + '</select></div>' +
     '<div class="receipt-btns"><button class="btn-cancel-receipt" onclick="closeReceiptOverlay()">\u2715 Odustani</button><button class="btn-confirm" onclick="saveReceiptEdit(' + receiptId + ')">\u2705 Spremi</button></div>';
   document.getElementById('receipt-overlay').classList.add('active');
 }
@@ -1632,6 +1636,7 @@ async function saveReceiptEdit(receiptId) {
   r.iznos = total;
   r.location_id = locationId || null;
   r.trip_id = tripId;
+  r.ide_u_nalog = document.getElementById('rc-type') ? document.getElementById('rc-type').value === 'da' : true;
 
   const tx = DB.transaction('racuni', 'readwrite');
   tx.objectStore('racuni').put(r);
@@ -1760,9 +1765,16 @@ async function showReceiptConfirmation(vendor, description, total, locationId) {
     </div>
     <div class="receipt-field">
       <label>🚗 Poveži s putnim nalogom (opcionalno)</label>
-      <select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px">
+      <select id="rc-trip" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:14px;margin-bottom:6px">
         <option value="">-- Bez naloga --</option>
         ${tripOptions}
+      </select>
+    </div>
+    <div class="receipt-field">
+      <label>🧾 Vrsta troška (Mora li se tebi isplatiti?)</label>
+      <select id="rc-type" style="width:100%;padding:10px;background:var(--bg);color:var(--text);border:1px solid rgba(0,212,180,.3);border-radius:6px;font-size:14px">
+        <option value="da">Osobni (Zbroji u moj putni nalog)</option>
+        <option value="ne">Službena kartica (NE zbrajaj u nalog)</option>
       </select>
     </div>
     <div class="receipt-btns">
@@ -1791,7 +1803,8 @@ async function confirmReceipt() {
     datum:       formatDate(new Date()),
     foto_base64: pendingReceiptBase64 || null,
     location_id: locationId || null,
-    trip_id:     document.getElementById('rc-trip').value ? parseInt(document.getElementById('rc-trip').value) : null
+    trip_id:     document.getElementById('rc-trip').value ? parseInt(document.getElementById('rc-trip').value) : null,
+    ide_u_nalog: document.getElementById('rc-type') ? document.getElementById('rc-type').value === 'da' : true
   };
 
   await dbAdd('racuni', receipt);
@@ -1830,7 +1843,7 @@ async function loadHistory() {
   list.innerHTML = all.map(item => {
     const hrDate = item.datum_od ? item.datum_od.split('-').reverse().join('.') : '';
     const legacyExpenses = item.troskovi || [];
-    const linkedReceipts = racuni.filter(r => r.trip_id === item.id);
+    const linkedReceipts = racuni.filter(r => r.trip_id === item.id && r.ide_u_nalog !== false);
     const expenses = [...legacyExpenses, ...linkedReceipts];
     
     const linkedNotes = kvarovi.filter(k => k.trip_id === item.id);
@@ -2051,7 +2064,7 @@ async function exportZip() {
     // === 1. PUTNI NALOZI (Travel Orders — own folder) ===
     if (nalozi.length) {
       for (const nalog of nalozi) {
-        const tripReceipts = racuni.filter(r => r.trip_id === nalog.id);
+        const tripReceipts = racuni.filter(r => r.trip_id === nalog.id && r.ide_u_nalog !== false);
         const legacyExpenses = nalog.troskovi || [];
         const allExpenses = [...legacyExpenses, ...tripReceipts];
         
@@ -2066,7 +2079,7 @@ async function exportZip() {
           const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
 
           let sheet1 = wb.worksheets[0];
-          sheet1.getCell('C10').value = "TOMISLAV BASIC";
+          sheet1.getCell('C10').value = "Tomislav Bašić\nTehničar";
           sheet1.getCell('C17').value = hrDateOd + '.';
           sheet1.getCell('E17').value = nalog.ruta;
           
@@ -2080,7 +2093,8 @@ async function exportZip() {
           
           if (wb.worksheets.length > 1) {
             let sheet2 = wb.worksheets[1];
-            sheet2.getCell('F4').value = 'TOMISLAV BASIC';
+            sheet2.getCell('F4').value = "Tomislav Bašić";
+            sheet2.getCell('F5').value = "Tehničar";
             sheet2.getCell('F6').value = nalog.ruta;
             sheet2.getCell('C11').value = hrDateOd;
             sheet2.getCell('F11').value = hrDateDo;
@@ -2233,7 +2247,7 @@ async function previewSpecificTrip(id) {
     const hrDateOd = nalog.datum_od.split('-').reverse().join('.');
     const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : 'aktivan';
     const allRacuni = await dbGetAll('racuni');
-    const linkedReceipts = allRacuni.filter(r => r.trip_id === id);
+    const linkedReceipts = allRacuni.filter(r => r.trip_id === id && r.ide_u_nalog !== false);
     const legacyExpenses = nalog.troskovi || [];
     const expenses = [...legacyExpenses, ...linkedReceipts];
     const expenseTotal = expenses.reduce((s, e) => s + (e.iznos || 0), 0);
@@ -2359,7 +2373,7 @@ async function downloadTrip(id) {
 
     // SHEET 0: Deckblatt
     const sheet1 = wb.worksheets[0];
-    sheet1.getCell('C10').value = "TOMISLAV BASIC";
+    sheet1.getCell('C10').value = "Tomislav Bašić\nTehničar";
     sheet1.getCell('C17').value = hrDateOd + '.';
     sheet1.getCell('E17').value = nalog.ruta;
     
@@ -2555,13 +2569,38 @@ async function uploadToGoogleDrive() {
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.load(arrayBuffer);
             const sheet1 = wb.worksheets[0];
-            sheet1.getCell('C10').value = 'TOMISLAV BASIC';
+            sheet1.getCell('C10').value = "Tomislav Bašić\nTehničar";
             sheet1.getCell('C17').value = hrDateOd + '.';
             sheet1.getCell('E17').value = nalog.ruta;
+
+            const allExpenses = racuni.filter(r => r.trip_id === nalog.id && r.ide_u_nalog !== false);
+
             if (wb.worksheets.length > 1) {
               const sheet2 = wb.worksheets[1];
-              sheet2.getCell('F4').value = 'TOMISLAV BASIC';
+              sheet2.getCell('F4').value = "Tomislav Bašić";
+              sheet2.getCell('F5').value = "Tehničar";
               sheet2.getCell('F6').value = nalog.ruta;
+
+              // Insert expenses in GDrive generator too!
+              const expenseRows = [29, 30, 31, 32, 33];
+              let totalExpense = 0;
+              for (let i = 0; i < Math.min(allExpenses.length, expenseRows.length); i++) {
+                const row = expenseRows[i];
+                const exp = allExpenses[i];
+                sheet2.getCell('B' + row).value = exp.opis || exp.vendor || 'Trošak';
+                sheet2.getCell('H' + row).value = exp.iznos;
+                sheet2.getCell('I' + row).value = exp.iznos + '€';
+                totalExpense += exp.iznos;
+              }
+              if (totalExpense > 0) {
+                // If there's per diem logic we can't easily grab it here since we don't recalculate it, 
+                // but we insert the expenses anyway. Wait, downloadTrip and exportZip do recalculate!
+                // Let's just insert the total Expense for correctness if per diem is missing in this simpler upload block
+                const dnevnica = parseFloat(sheet2.getCell('H16').value) || 0;
+                sheet2.getCell('I34').value = (dnevnica + totalExpense).toFixed(2) + '€';
+                sheet2.getCell('E46').value = (dnevnica + totalExpense).toFixed(2) + '€';
+                sheet2.getCell('E50').value = (dnevnica + totalExpense).toFixed(2) + '€';
+              }
             }
             const buffer = await wb.xlsx.writeBuffer();
             let cityForFile = (nalog.ruta || 'nepoznato');
