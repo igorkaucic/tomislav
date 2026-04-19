@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#00D4B4">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
-  <title>Tomislav — Terenski Asistent</title>
+  <title>Basić Asistent</title>
   <link rel="manifest" href="manifest.json">
   <!-- Libraries from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -382,22 +382,103 @@
     .photo-fullscreen.active { display: flex; }
     .photo-fullscreen img { max-width: 95%; max-height: 90vh; object-fit: contain; }
 
-    /* ===== MAP ===== */
-    #geomap {
-      width: 100%; height: 280px; border-radius: var(--radius);
-      border: 2px solid rgba(0,212,180,.2); margin-bottom: 8px;
-      z-index: 1;
+    /* ===== CALENDAR UI ===== */
+    .calendar-container {
+      background: var(--surface); border-radius: var(--radius); padding: 16px;
     }
-    .radius-slider-wrap {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    .calendar-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
     }
-    .radius-slider-wrap input[type=range] {
-      flex: 1; accent-color: var(--teal); height: 6px;
+    .calendar-header h3 { font-size: 15px; color: var(--teal); font-weight: 700; }
+    .calendar-nav {
+      display: flex; gap: 8px;
     }
-    .radius-slider-wrap .radius-val {
-      color: var(--teal); font-weight: 700; font-size: 14px; min-width: 55px; text-align: right;
+    .calendar-nav button {
+      background: var(--bg); border: 1px solid rgba(0,212,180,.2); color: var(--teal);
+      border-radius: 8px; padding: 6px 12px; font-size: 14px; cursor: pointer;
     }
-    .map-hint { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .calendar-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    }
+    .calendar-day-label {
+      text-align: center; font-size: 11px; color: var(--muted); padding: 4px 0;
+      font-weight: 600; text-transform: uppercase;
+    }
+    .calendar-day {
+      aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      border-radius: 10px; font-size: 14px; cursor: pointer; position: relative;
+      background: var(--bg); border: 1px solid transparent; transition: all .15s;
+      gap: 2px;
+    }
+    .calendar-day:hover { border-color: var(--teal); }
+    .calendar-day.empty { background: transparent; cursor: default; border: none; }
+    .calendar-day.today { border-color: var(--teal); box-shadow: 0 0 8px rgba(0,212,180,.2); }
+    .calendar-day.has-location { background: rgba(0,212,180,.15); border-color: rgba(0,212,180,.3); }
+    .calendar-day .day-num { font-weight: 600; color: var(--text); }
+    .calendar-day .day-loc {
+      font-size: 7px; color: var(--teal); font-weight: 600;
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      padding: 0 2px;
+    }
+    .calendar-day.empty .day-num { color: transparent; }
+
+    /* Location Picker Overlay */
+    .location-picker-overlay {
+      display: none; position: fixed; inset: 0; z-index: 170;
+      background: rgba(13,27,42,.97);
+      flex-direction: column; padding: 20px;
+    }
+    .location-picker-overlay.active { display: flex; }
+    .location-picker-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-shrink: 0;
+    }
+    .location-picker-header h3 { color: var(--teal); font-size: 16px; }
+    .location-list {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    }
+    .location-item {
+      padding: 14px 16px; background: var(--surface); border-radius: 10px;
+      cursor: pointer; border-left: 3px solid var(--teal); transition: background .1s;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .location-item:active { background: rgba(0,212,180,.1); }
+    .location-item .loc-name { font-weight: 600; font-size: 14px; }
+    .location-item .loc-region { font-size: 11px; color: var(--muted); }
+    .location-remove {
+      background: rgba(255,76,106,.15); border: none; color: var(--danger);
+      border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    }
+
+    /* Trip Start/End Button */
+    .trip-start-btn {
+      background: linear-gradient(135deg, var(--teal), #00a890); color: #0D1B2A;
+      border: none; border-radius: var(--radius); padding: 20px;
+      font-size: 18px; font-weight: 800; cursor: pointer; width: 100%;
+      letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 12px;
+      box-shadow: 0 4px 20px rgba(0,212,180,.3); transition: transform .1s;
+    }
+    .trip-start-btn:active { transform: scale(0.97); }
+    .trip-end-btn {
+      background: linear-gradient(135deg, var(--danger), #cc3355); color: #fff;
+      border: none; border-radius: var(--radius); padding: 20px;
+      font-size: 18px; font-weight: 800; cursor: pointer; width: 100%;
+      letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 12px;
+      box-shadow: 0 4px 20px rgba(255,76,106,.3); transition: transform .1s;
+    }
+    .trip-end-btn:active { transform: scale(0.97); }
+
+    /* Per Diem Summary */
+    .dnevnica-summary {
+      background: rgba(0,201,122,.08); border: 2px solid var(--success);
+      border-radius: var(--radius); padding: 16px; margin-top: 12px;
+    }
+    .dnevnica-summary h4 { color: var(--success); font-size: 14px; margin-bottom: 8px; }
+    .dnevnica-summary .dnevnica-amount {
+      font-size: 28px; font-weight: 800; color: var(--success);
+    }
+    .dnevnica-summary .dnevnica-detail {
+      font-size: 12px; color: var(--muted); margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -407,7 +488,7 @@
   <!-- TOP BAR -->
   <div class="topbar">
     <div>
-      <h1>TOMISLAV</h1>
+      <h1>BASIĆ</h1>
       <div class="sub">TERENSKI ASISTENT <span id="app-version" style="opacity:.4;font-size:9px;margin-left:6px">v1.5-2903.2032</span></div>
     </div>
     <div class="gps-dot" id="gps-status">GPS OFF</div>
@@ -435,20 +516,25 @@
       </div>
 
       <!-- Main Actions -->
-      <div class="action-group">
-        <div class="action-btn btn-teal" onclick="startSpeech('putni')">
-          <div class="icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
-          <div class="info">
-            <strong>PUTNI NALOG</strong>
-            <span>Reci rutu i kreni na put</span>
-          </div>
-        </div>
+      <!-- ONE-CLICK TRIP START/END -->
+      <div id="trip-start-container">
+        <button class="trip-start-btn" id="btn-start-trip" onclick="startTrip()">
+          🚗 POKRENI NALOG
+        </button>
+      </div>
+      <div id="trip-end-container" style="display:none">
+        <button class="trip-end-btn" id="btn-end-trip" onclick="endTrip()">
+          🏠 ZAVRŠI NALOG — POVRATAK U ZAGREB
+        </button>
+      </div>
+      <div id="dnevnica-display" style="display:none"></div>
 
+      <div class="action-group" style="margin-top:12px">
         <div class="action-btn btn-amber" onclick="startSpeech('kvar')">
           <div class="icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg></div>
           <div class="info">
-            <strong>PRIJAVI KVAR / BILJEŠKU</strong>
-            <span>Evidentiraj kvar neovisno o putnom nalogu</span>
+            <strong>DODAJ PODSJETNIK</strong>
+            <span>Evidentiraj podsjetnik ili bilješku</span>
           </div>
         </div>
 
@@ -473,7 +559,23 @@
 
     <!-- NOTES PAGE -->
     <div class="page" id="page-notes">
-      <div id="notes-list"><div class="empty-state">📝<br><br>Nema evidentiranih bilješki.</div></div>
+      <div id="notes-list"><div class="empty-state">📝<br><br>Nema evidentiranih podsjetnika.</div></div>
+    </div>
+
+    <!-- CALENDAR PAGE -->
+    <div class="page" id="page-calendar">
+      <div class="calendar-container">
+        <div class="calendar-header">
+          <div class="calendar-nav"><button onclick="calNavMonth(-1)">◀</button></div>
+          <h3 id="cal-month-label">Travanj 2026</h3>
+          <div class="calendar-nav"><button onclick="calNavMonth(1)">▶</button></div>
+        </div>
+        <div class="calendar-grid" id="cal-grid"></div>
+      </div>
+      <div style="margin-top:12px;background:var(--surface);border-radius:var(--radius);padding:14px">
+        <h4 style="font-size:13px;color:var(--teal);margin-bottom:8px">📋 Lokacije ovog mjeseca</h4>
+        <div id="cal-month-summary" style="font-size:12px;color:var(--muted)">Nema unesenih lokacija.</div>
+      </div>
     </div>
 
     <!-- SETTINGS PAGE -->
@@ -501,21 +603,10 @@
           <input type="text" id="s-emailjs-public" placeholder="xxxxxxxxxxxxxxx">
         </div>
 
-        <div class="settings-section" style="margin-top:16px;padding:0;background:transparent">
-          <h3>📍 Geozona — doma</h3>
-          <p class="map-hint">Povuci marker za pomicanje. Krug pokazuje radijus geoozone za automatsko zatvaranje puta.</p>
-          <div id="geomap"></div>
-          <div class="radius-slider-wrap">
-            <span style="font-size:12px;color:var(--muted)">500m</span>
-            <input type="range" id="s-radius-slider" min="500" max="5000" step="100" value="2000">
-            <span class="radius-val" id="s-radius-label">2000m</span>
-            <span style="font-size:12px;color:var(--muted)">5km</span>
-          </div>
-          <!-- Hidden inputs that hold the actual values -->
-          <input type="hidden" id="s-lat" value="45.8280">
-          <input type="hidden" id="s-lng" value="16.0530">
-          <input type="hidden" id="s-radius" value="2000">
-        </div>
+        <!-- Geozone removed in v4.0 — manual trip closing + offline snapping -->
+        <input type="hidden" id="s-lat" value="45.8280">
+        <input type="hidden" id="s-lng" value="16.0530">
+        <input type="hidden" id="s-radius" value="2000">
 
         <button class="save-btn" onclick="saveSettings()">💾 Spremi postavke</button>
       </div>
@@ -538,7 +629,10 @@
       <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></span> Nalozi
     </button>
     <button class="nav-btn" id="nav-notes" onclick="showPage('notes')">
-      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg></span> Bilješke
+      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg></span> Podsjetnici
+    </button>
+    <button class="nav-btn" id="nav-calendar" onclick="showPage('calendar')">
+      <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Kalendar
     </button>
     <button class="nav-btn" id="nav-settings" onclick="showPage('settings')">
       <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Postavke
@@ -630,6 +724,16 @@
   </div>
 </div>
 
+<!-- LOCATION PICKER OVERLAY -->
+<div class="location-picker-overlay" id="location-picker">
+  <div class="location-picker-header">
+    <h3 id="loc-picker-title">📍 Odaberi lokaciju</h3>
+    <button style="background:none;border:none;color:var(--muted);font-size:28px;cursor:pointer" onclick="closeLocationPicker()">✕</button>
+  </div>
+  <div class="location-list" id="loc-picker-list"></div>
+  <button style="margin-top:12px;padding:14px;background:var(--danger);color:#fff;border:none;border-radius:var(--radius);font-weight:700;font-size:14px;cursor:pointer;width:100%;flex-shrink:0" onclick="removeLocationForDay()">🗑️ Ukloni lokaciju s ovog dana</button>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -639,7 +743,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.10';
+const APP_VERSION = '3.11';
 
 // ===================================================
 // CONFIG & STATE
@@ -675,6 +779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadHistory();
   initGPS();
   restoreActiveTrip();
+  renderCalendar();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js?v=' + APP_VERSION).catch(()=>{});
   }
@@ -790,73 +895,13 @@ function showPage(pageId) {
   if (btn) btn.classList.add('active');
   if (pageId === 'history') loadHistory();
   if (pageId === 'notes') loadNotes();
-  if (pageId === 'settings') {
-    setTimeout(() => initGeoMap(), 200); // Delay to let container render
-  }
+  if (pageId === 'calendar') renderCalendar();
 }
 
 // ===================================================
-// GEO MAP (Leaflet)
+// GEO MAP — REMOVED IN V4.0 (manual closing + offline snapping)
 // ===================================================
-let geoMap = null;
-let geoMarker = null;
-let geoCircle = null;
-
-function initGeoMap() {
-  const lat = parseFloat(document.getElementById('s-lat').value) || 45.8280;
-  const lng = parseFloat(document.getElementById('s-lng').value) || 16.0530;
-  const radius = parseFloat(document.getElementById('s-radius').value) || 2000;
-
-  if (geoMap) {
-    geoMap.invalidateSize();
-    return;
-  }
-
-  geoMap = L.map('geomap', {
-    center: [lat, lng],
-    zoom: 13,
-    zoomControl: true,
-    attributionControl: false
-  });
-
-  // Dark tile layer that matches the app theme
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19
-  }).addTo(geoMap);
-
-  // Circle showing geofence radius
-  geoCircle = L.circle([lat, lng], {
-    radius: radius,
-    color: '#00D4B4',
-    fillColor: '#00D4B4',
-    fillOpacity: 0.12,
-    weight: 2
-  }).addTo(geoMap);
-
-  // Draggable marker
-  geoMarker = L.marker([lat, lng], { draggable: true }).addTo(geoMap);
-  geoMarker.bindPopup('🏠 Dom — Dubrava').openPopup();
-
-  geoMarker.on('dragend', () => {
-    const pos = geoMarker.getLatLng();
-    document.getElementById('s-lat').value = pos.lat.toFixed(6);
-    document.getElementById('s-lng').value = pos.lng.toFixed(6);
-    geoCircle.setLatLng(pos);
-  });
-
-  // Radius slider
-  const slider = document.getElementById('s-radius-slider');
-  const label = document.getElementById('s-radius-label');
-  slider.value = radius;
-  label.textContent = radius + 'm';
-
-  slider.addEventListener('input', () => {
-    const r = parseInt(slider.value);
-    label.textContent = r + 'm';
-    document.getElementById('s-radius').value = r;
-    geoCircle.setRadius(r);
-  });
-}
+// Leaflet geozone map removed. Settings page no longer shows radius slider.
 
 // ===================================================
 // TOAST
@@ -941,12 +986,25 @@ function stopSpeech() {
 }
 
 // ===================================================
-// GPS GEOFENCING — auto-vraćanje kući
+// GPS — Simplified (v4.0: No auto-close, just simple status)
 // ===================================================
 let gpsWatchId = null;
-let gpsCheckInterval = null;
-let hasLeftHome = false; // KRITIČNO: ne zatvori put dok ne vidi da je IZAŠAO iz zone
 
+function initGPS() {
+  if (!navigator.geolocation) return;
+  const el = document.getElementById('gps-status');
+  navigator.geolocation.getCurrentPosition(() => {
+    el.textContent = 'GPS ✓';
+    el.style.color = 'var(--success, #4CAF50)';
+  }, () => {
+    el.textContent = 'GPS ✗';
+    el.style.color = 'var(--danger, #e74c3c)';
+  }, { timeout: 5000 });
+}
+
+// ===================================================
+// DISTANCE UTILITY (used by Offline Snapping)
+// ===================================================
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -957,111 +1015,73 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function initGPS() {
-  if (!navigator.geolocation) return;
-  const el = document.getElementById('gps-status');
-  
-  // Update GPS dot status
-  navigator.geolocation.getCurrentPosition(() => {
-    el.textContent = 'GPS ✓';
-    el.style.color = 'var(--success, #4CAF50)';
-  }, () => {
-    el.textContent = 'GPS ✗';
-    el.style.color = 'var(--danger, #e74c3c)';
-  }, { timeout: 5000 });
-  
-  // Passive watch — provjera svakih 3 minute kad je put aktivan
-  gpsCheckInterval = setInterval(async () => {
-    if (!activeTrip) return; // nema aktivnog puta, nema provjere
-    
-    navigator.geolocation.getCurrentPosition(async pos => {
-      const { latitude, longitude } = pos.coords;
-      const homeLat = parseFloat(settings.lat) || 45.8280;
-      const homeLng = parseFloat(settings.lng) || 16.0530;
-      const radiusKm = (parseFloat(settings.radius) || 2000) / 1000;
-      
-      const distKm = haversineKm(latitude, longitude, homeLat, homeLng);
-      
-      console.log(`GPS: ${distKm.toFixed(2)}km od kuće | hasLeftHome=${hasLeftHome} | zona=${radiusKm}km`);
-      
-      if (distKm > radiusKm) {
-        // Izvan zone — zabilježi da je IZAŠAO
-        if (!hasLeftHome) {
-          hasLeftHome = true;
-          console.log('GPS: Izašao iz zone Dubrave! Sada pratim povratak...');
-        }
-      } else if (distKm <= radiusKm && hasLeftHome) {
-        // VRATIO SE u zonu NAKON što je bio vani — zatvori nalog!
-        const now = new Date();
-        const rounded = roundToHalfHour(now);
-        activeTrip.datum_do   = formatDate(now);
-        activeTrip.vrijeme_do = formatTime(rounded);
-        activeTrip.status     = 'zatvoren';
-        await dbPut('putni_nalozi', activeTrip);
-        localStorage.removeItem('active_trip');
-        
-        const tripRoute = activeTrip.ruta;
-        activeTrip = null;
-        hasLeftHome = false;
-        document.getElementById('trip-indicator').classList.remove('show');
-        await updatePendingCount();
-        await loadHistory();
-        showToast('🏠 Dobrodošao kući! Put zatvoren: ' + tripRoute);
-        console.log('GPS AUTOMATSKI ZATVORIO PUT u ' + formatTime(rounded));
-      } else {
-        // Još je u zoni ali NIJE izašao — ignorira se (tek kreće na put)
-        console.log('GPS: Još si u Dubravi, čekam da izađeš pa ću pratiti povratak...');
-      }
-    }, err => {
-      console.warn('GPS interval error:', err.message);
-    }, { timeout: 10000, maximumAge: 60000 });
-    
-  }, 3 * 60 * 1000); // svakih 3 minute
-}
-
 // ===================================================
-// PARSER
+// HARDCODED COMPANY LOCATIONS (v4.0 — Offline Snapping)
 // ===================================================
-function processTranscript(text, mode) {
-  const now     = new Date();
-  const rounded = roundToHalfHour(now);
-  const dateStr = formatDate(now);
-  const timeStr = formatTime(rounded);
+const COMPANY_LOCATIONS = [
+  { name: 'Zagreb', lat: 45.8150, lng: 15.9819, region: 'Zagreb' },
+  { name: 'Koprivnica', lat: 46.1627, lng: 16.8272, region: 'Podravina' },
+  { name: 'Križevci', lat: 46.0211, lng: 16.5428, region: 'Podravina' },
+  { name: 'Varaždin', lat: 46.3057, lng: 16.3366, region: 'Zagorje' },
+  { name: 'Čakovec', lat: 46.3844, lng: 16.4344, region: 'Zagorje' },
+  { name: 'Bjelovar', lat: 45.8986, lng: 16.8489, region: 'Podravina' },
+  { name: 'Sisak', lat: 45.4850, lng: 16.3728, region: 'Banovina' },
+  { name: 'Karlovac', lat: 45.4929, lng: 15.5553, region: 'Karlovac' },
+  { name: 'Rijeka', lat: 45.3271, lng: 14.4422, region: 'Primorje' },
+  { name: 'Pula', lat: 44.8666, lng: 13.8496, region: 'Istra' },
+  { name: 'Zadar', lat: 44.1194, lng: 15.2314, region: 'Dalmacija' },
+  { name: 'Šibenik', lat: 43.7350, lng: 15.8953, region: 'Dalmacija' },
+  { name: 'Split', lat: 43.5081, lng: 16.4402, region: 'Dalmacija' },
+  { name: 'Dubrovnik', lat: 42.6507, lng: 18.0944, region: 'Dalmacija' },
+  { name: 'Osijek', lat: 45.5511, lng: 18.6939, region: 'Slavonija' },
+  { name: 'Vukovar', lat: 45.3517, lng: 18.9989, region: 'Slavonija' },
+  { name: 'Vinkovci', lat: 45.2886, lng: 18.8044, region: 'Slavonija' },
+  { name: 'Slavonski Brod', lat: 45.1603, lng: 18.0158, region: 'Slavonija' },
+  { name: 'Požega', lat: 45.3400, lng: 17.6853, region: 'Slavonija' },
+  { name: 'Virovitica', lat: 45.8317, lng: 17.3839, region: 'Slavonija' },
+  { name: 'Đakovo', lat: 45.3092, lng: 18.4108, region: 'Slavonija' },
+  { name: 'Našice', lat: 45.4900, lng: 18.0900, region: 'Slavonija' },
+  { name: 'Nova Gradiška', lat: 45.2533, lng: 17.3833, region: 'Slavonija' },
+  { name: 'Gospić', lat: 44.5464, lng: 15.3742, region: 'Lika' },
+  { name: 'Samobor', lat: 45.8031, lng: 15.7114, region: 'Zagreb' },
+  { name: 'Velika Gorica', lat: 45.7122, lng: 16.0750, region: 'Zagreb' },
+  { name: 'Kutina', lat: 45.4750, lng: 16.7819, region: 'Moslavina' },
+  { name: 'Daruvar', lat: 45.5906, lng: 17.2247, region: 'Moslavina' },
+];
 
-  if (mode === 'putni') {
-    parsePutniNalog(text, dateStr, timeStr);
-  } else if (mode === 'kvar') {
-    parseKvar(text, dateStr, timeStr);
+function snapToNearestLocation(lat, lng) {
+  let closest = null, minDist = Infinity;
+  for (const loc of COMPANY_LOCATIONS) {
+    const d = haversineKm(lat, lng, loc.lat, loc.lng);
+    if (d < minDist) { minDist = d; closest = loc; }
   }
+  // Only snap if within 15km of a known location
+  return (closest && minDist < 15) ? closest : null;
 }
 
-async function parsePutniNalog(text, dateStr, timeStr) {
-  // If there's already an active trip — close it first, then create new one
+// ===================================================
+// ONE-CLICK TRIP START / END (v4.0)
+// ===================================================
+async function startTrip() {
   if (activeTrip) {
-    activeTrip.datum_do    = dateStr;
-    activeTrip.vrijeme_do  = timeStr;
-    activeTrip.status      = 'zatvoren';
-    await dbPut('putni_nalozi', activeTrip);
-    localStorage.removeItem('active_trip');
-    activeTrip = null;
-    document.getElementById('trip-indicator').classList.remove('show');
-    console.log('Prethodni nalog automatski zatvoren.');
+    showToast('⚠️ Već imaš aktivan nalog! Prvo ga završi.', true);
+    return;
   }
 
-  // Extract route — look for city names after common keywords
-  const route = extractRoute(text);
+  const now = new Date();
+  const rounded = roundToHalfHour(now);
 
   const entry = {
-    tip:        'putni',
-    datum_od:   dateStr,
-    datum_do:   null,
-    vrijeme_od: timeStr,
+    tip: 'putni',
+    datum_od: formatDate(now),
+    datum_do: null,
+    vrijeme_od: formatTime(rounded),
     vrijeme_do: null,
-    ruta:       route || text,
-    status:     'aktivan',
-    raw:        text,
-    troskovi:   [],  // Receipt expenses attached during travel
-    biljeske:   []   // Fault reports / notes attached during travel
+    ruta: 'Zagreb',
+    status: 'aktivan',
+    cities: ['Zagreb'],
+    dnevnica: 0,
+    raw: 'One-click start'
   };
 
   const id = await dbAdd('putni_nalozi', entry);
@@ -1070,16 +1090,216 @@ async function parsePutniNalog(text, dateStr, timeStr) {
   localStorage.setItem('active_trip', JSON.stringify(entry));
 
   document.getElementById('trip-route-display').textContent = entry.ruta;
-  document.getElementById('trip-time-display').textContent  = 'Polazak: ' + timeStr;
+  document.getElementById('trip-time-display').textContent = 'Polazak: ' + entry.vrijeme_od;
   document.getElementById('trip-indicator').classList.add('show');
+  updateTripButtons();
 
-  // Switch to History page automatically so user sees it
-  showPage('history');
-  
   await updatePendingCount();
   await loadHistory();
-  showToast('🚗 Put počeo: ' + entry.ruta + ' u ' + timeStr);
-  console.log('KREIRAN PUTNI NALOG:', entry);
+  showToast('🚗 Nalog pokrenut u ' + entry.vrijeme_od + '!');
+}
+
+async function endTrip() {
+  if (!activeTrip) return;
+
+  const now = new Date();
+  const rounded = roundToHalfHour(now);
+
+  activeTrip.datum_do = formatDate(now);
+  activeTrip.vrijeme_do = formatTime(rounded);
+  activeTrip.status = 'zatvoren';
+
+  // Calculate per diem
+  const startTime = new Date(activeTrip.datum_od + 'T' + activeTrip.vrijeme_od + ':00');
+  const endTime = new Date(activeTrip.datum_do + 'T' + activeTrip.vrijeme_do + ':00');
+  const hours = (endTime - startTime) / (1000 * 60 * 60);
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  let dnevnica = 0;
+  // Full diem for each complete 24h
+  dnevnica += days * 22.50;
+  // Remaining hours
+  if (remainingHours >= 12) dnevnica += 22.50;
+  else if (remainingHours >= 8) dnevnica += 11.25;
+
+  activeTrip.dnevnica = dnevnica;
+
+  // Build route from cities
+  const cities = activeTrip.cities || ['Zagreb'];
+  if (cities[cities.length - 1] !== 'Zagreb') cities.push('Zagreb');
+  activeTrip.ruta = cities.join(' - ');
+
+  await dbPut('putni_nalozi', activeTrip);
+  localStorage.removeItem('active_trip');
+
+  // Show per diem summary
+  const dd = document.getElementById('dnevnica-display');
+  dd.style.display = 'block';
+  dd.innerHTML = `<div class="dnevnica-summary">
+    <h4>✅ Nalog zatvoren: ${activeTrip.ruta}</h4>
+    <div class="dnevnica-amount">${dnevnica.toFixed(2)} €</div>
+    <div class="dnevnica-detail">${hours.toFixed(1)} sati ukupno · ${days > 0 ? days + ' cijelih dana + ' : ''}${remainingHours.toFixed(1)}h ostatak</div>
+  </div>`;
+  setTimeout(() => { dd.style.display = 'none'; }, 15000);
+
+  const route = activeTrip.ruta;
+  activeTrip = null;
+  document.getElementById('trip-indicator').classList.remove('show');
+  updateTripButtons();
+
+  await updatePendingCount();
+  await loadHistory();
+  showToast('🏠 Dobrodošao kući! Dnevnica: ' + dnevnica.toFixed(2) + '€');
+}
+
+function addCityToTrip(cityName) {
+  if (!activeTrip) return;
+  if (!activeTrip.cities) activeTrip.cities = ['Zagreb'];
+  // Don't add duplicates consecutively
+  if (activeTrip.cities[activeTrip.cities.length - 1] === cityName) return;
+  activeTrip.cities.push(cityName);
+  activeTrip.ruta = activeTrip.cities.join(' - ');
+  localStorage.setItem('active_trip', JSON.stringify(activeTrip));
+  document.getElementById('trip-route-display').textContent = activeTrip.ruta;
+  dbPut('putni_nalozi', activeTrip);
+}
+
+function updateTripButtons() {
+  const hasTrip = !!activeTrip;
+  document.getElementById('trip-start-container').style.display = hasTrip ? 'none' : 'block';
+  document.getElementById('trip-end-container').style.display = hasTrip ? 'block' : 'none';
+}
+
+// ===================================================
+// CALENDAR MODULE (v4.0 — Retroactive City Logging)
+// ===================================================
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let calData = {}; // { 'YYYY-MM-DD': 'CityName' }
+let selectedCalDay = null;
+
+const HR_MONTHS = ['Siječanj','Veljača','Ožujak','Travanj','Svibanj','Lipanj',
+                   'Srpanj','Kolovoz','Rujan','Listopad','Studeni','Prosinac'];
+const HR_DAYS = ['Pon','Uto','Sri','Čet','Pet','Sub','Ned'];
+
+function loadCalData() {
+  try {
+    const raw = localStorage.getItem('tomislav_calendar');
+    if (raw) calData = JSON.parse(raw);
+  } catch(e) {}
+}
+
+function saveCalData() {
+  localStorage.setItem('tomislav_calendar', JSON.stringify(calData));
+}
+
+function renderCalendar() {
+  loadCalData();
+  const label = document.getElementById('cal-month-label');
+  label.textContent = HR_MONTHS[calMonth] + ' ' + calYear;
+
+  const grid = document.getElementById('cal-grid');
+  let html = HR_DAYS.map(d => `<div class="calendar-day-label">${d}</div>`).join('');
+
+  const firstDay = new Date(calYear, calMonth, 1);
+  let startDay = firstDay.getDay(); // 0=Sun
+  startDay = startDay === 0 ? 6 : startDay - 1; // Convert to Mon=0
+
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date();
+
+  // Empty cells before first day
+  for (let i = 0; i < startDay; i++) {
+    html += '<div class="calendar-day empty"><span class="day-num"></span></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateKey = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const loc = calData[dateKey] || '';
+    const isToday = (d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear());
+    const classes = ['calendar-day'];
+    if (isToday) classes.push('today');
+    if (loc) classes.push('has-location');
+
+    html += `<div class="${classes.join(' ')}" onclick="openLocationPicker('${dateKey}')">
+      <span class="day-num">${d}</span>
+      ${loc ? `<span class="day-loc">${loc}</span>` : ''}
+    </div>`;
+  }
+
+  grid.innerHTML = html;
+  updateCalSummary();
+}
+
+function updateCalSummary() {
+  const summary = document.getElementById('cal-month-summary');
+  const monthKey = `${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+  const entries = Object.entries(calData).filter(([k]) => k.startsWith(monthKey));
+  if (!entries.length) {
+    summary.innerHTML = 'Nema unesenih lokacija za ovaj mjesec.';
+    return;
+  }
+  summary.innerHTML = entries.sort().map(([date, city]) => {
+    const d = date.split('-')[2];
+    return `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">📍 <strong>${d}.</strong> ${city}</div>`;
+  }).join('');
+}
+
+function calNavMonth(dir) {
+  calMonth += dir;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+}
+
+function openLocationPicker(dateKey) {
+  selectedCalDay = dateKey;
+  const parts = dateKey.split('-');
+  document.getElementById('loc-picker-title').textContent = `📍 ${parts[2]}.${parts[1]}.${parts[0]}`;
+  const list = document.getElementById('loc-picker-list');
+  list.innerHTML = COMPANY_LOCATIONS
+    .filter(l => l.name !== 'Zagreb') // Zagreb is always start/end, no need to log
+    .map(loc => `<div class="location-item" onclick="selectLocation('${loc.name}')">
+      <div><div class="loc-name">${loc.name}</div><div class="loc-region">${loc.region}</div></div>
+    </div>`).join('');
+  document.getElementById('location-picker').classList.add('active');
+}
+
+function closeLocationPicker() {
+  document.getElementById('location-picker').classList.remove('active');
+  selectedCalDay = null;
+}
+
+function selectLocation(cityName) {
+  if (!selectedCalDay) return;
+  calData[selectedCalDay] = cityName;
+  saveCalData();
+  // Also add to active trip if there is one
+  if (activeTrip) addCityToTrip(cityName);
+  closeLocationPicker();
+  renderCalendar();
+  showToast('📍 ' + cityName + ' dodana na ' + selectedCalDay.split('-').reverse().join('.'));
+}
+
+function removeLocationForDay() {
+  if (!selectedCalDay) return;
+  delete calData[selectedCalDay];
+  saveCalData();
+  closeLocationPicker();
+  renderCalendar();
+  showToast('🗑️ Lokacija uklonjena');
+}
+
+// ===================================================
+// PARSER — Kvar only (v4.0: trip start is one-click)
+// ===================================================
+function processTranscript(text, mode) {
+  const now = new Date();
+  const rounded = roundToHalfHour(now);
+  const dateStr = formatDate(now);
+  const timeStr = formatTime(rounded);
+  if (mode === 'kvar') parseKvar(text, dateStr, timeStr);
 }
 
 async function parseKvar(text, dateStr, timeStr) {
@@ -1097,7 +1317,7 @@ async function parseKvar(text, dateStr, timeStr) {
   };
 
   await dbAdd('kvarovi', note);
-  showToast('⚠️ Kvar evidentiran: ' + lokacija);
+  showToast('⚠️ Podsjetnik evidentiran: ' + lokacija);
 
   showPage('notes');
   await updatePendingCount();
@@ -1247,13 +1467,14 @@ function getMonthKey(dateStr) {
 
 function restoreActiveTrip() {
   const saved = localStorage.getItem('active_trip');
-  if (!saved) return;
+  if (!saved) { updateTripButtons(); return; }
   try {
     activeTrip = JSON.parse(saved);
     document.getElementById('trip-route-display').textContent = activeTrip.ruta;
     document.getElementById('trip-time-display').textContent  = 'Polazak: ' + activeTrip.vrijeme_od;
     document.getElementById('trip-indicator').classList.add('show');
-  } catch(e) {}
+    updateTripButtons();
+  } catch(e) { updateTripButtons(); }
 }
 
 // ===================================================
