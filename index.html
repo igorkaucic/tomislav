@@ -743,7 +743,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.13';
+const APP_VERSION = '3.14';
 
 // ===================================================
 // CONFIG & STATE
@@ -2171,10 +2171,22 @@ async function exportZip() {
         });
         showToast('✅ ZIP uspješno proslijeđen!');
       } catch (err) {
-        if (err.name !== 'AbortError') throw err; // User cancelled share
+        if (err.name === 'AbortError') {
+          // User cancelled native share, do nothing
+          return;
+        }
+        // Fallback for Desktop/Unsupported where canShare lies or throws Permission Denied
+        console.warn('Share API failed, falling back to download:', err);
+        const url = URL.createObjectURL(content);
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('✅ ZIP preuzet u Downloads!');
       }
     } else {
-      // Fallback
+      // Fallback if not supported
       const url = URL.createObjectURL(content);
       const a   = document.createElement('a');
       a.href     = url;
