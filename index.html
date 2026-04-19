@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.20';
+const APP_VERSION = '3.21';
 
 // ===================================================
 // CONFIG & STATE
@@ -2079,7 +2079,7 @@ async function exportZip() {
           const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
 
           let sheet1 = wb.worksheets[0];
-          sheet1.getCell('C10').value = "Tomislav Bašić\ntehničar";
+          sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
           sheet1.getCell('C17').value = hrDateOd + '.';
           sheet1.getCell('E17').value = nalog.ruta;
           
@@ -2093,8 +2093,8 @@ async function exportZip() {
           
           if (wb.worksheets.length > 1) {
             let sheet2 = wb.worksheets[1];
-            sheet2.getCell('F4').value = "Tomislav Bašić";
-            sheet2.getCell('F5').value = "tehničar";
+            sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
+            sheet2.getCell('F5').value = "TEHNIČAR";
             sheet2.getCell('F6').value = nalog.ruta;
             sheet2.getCell('C11').value = hrDateOd;
             sheet2.getCell('F11').value = hrDateDo;
@@ -2373,7 +2373,7 @@ async function downloadTrip(id) {
 
     // SHEET 0: Deckblatt
     const sheet1 = wb.worksheets[0];
-    sheet1.getCell('C10').value = "Tomislav Bašić\ntehničar";
+    sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
     sheet1.getCell('C17').value = hrDateOd + '.';
     sheet1.getCell('E17').value = nalog.ruta;
     
@@ -2593,7 +2593,7 @@ async function uploadToGoogleDrive() {
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.load(arrayBuffer);
             const sheet1 = wb.worksheets[0];
-            sheet1.getCell('C10').value = "Tomislav Bašić\ntehničar";
+            sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
             sheet1.getCell('C17').value = hrDateOd + '.';
             sheet1.getCell('E17').value = nalog.ruta;
 
@@ -2601,8 +2601,8 @@ async function uploadToGoogleDrive() {
 
             if (wb.worksheets.length > 1) {
               const sheet2 = wb.worksheets[1];
-              sheet2.getCell('F4').value = "Tomislav Bašić";
-              sheet2.getCell('F5').value = "tehničar";
+              sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
+              sheet2.getCell('F5').value = "TEHNIČAR";
               sheet2.getCell('F6').value = nalog.ruta;
 
               // Insert expenses in GDrive generator too!
