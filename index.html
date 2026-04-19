@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.16';
+const APP_VERSION = '3.17';
 
 // ===================================================
 // CONFIG & STATE
@@ -2109,8 +2109,9 @@ async function exportZip() {
           }
           
           const buffer = await wb.xlsx.writeBuffer();
-          const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
-          zip.file(`Putni_Nalozi/Putni_nalog_${hrDateOd.replace(/\./g,'.')}_${cityForFile}.xlsx`, buffer);
+          let cityForFile = (nalog.ruta || 'nepoznato');
+          cityForFile = cityForFile.replace(/\s*-\s*/g, '-').replace(/\s+/g, '_').replace(/[^a-zA-ZčćšžđČĆŠŽĐ0-9\-_]/g, '');
+          zip.file(`Putni_Nalozi/Putni_nalog_${hrDateOd}_${cityForFile}.xlsx`, buffer);
         } else {
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([nalog]), 'Putni Nalog');
@@ -2563,7 +2564,8 @@ async function uploadToGoogleDrive() {
               sheet2.getCell('F6').value = nalog.ruta;
             }
             const buffer = await wb.xlsx.writeBuffer();
-            const cityForFile = (nalog.ruta || '').replace(/Zagreb\s*-\s*/gi,'').replace(/\s*-\s*Zagreb/gi,'').replace(/[^a-zA-ZčćšžđČĆŠŽĐ\s]/g,'').trim().replace(/\s+/g,'_') || 'nepoznato';
+            let cityForFile = (nalog.ruta || 'nepoznato');
+            cityForFile = cityForFile.replace(/\s*-\s*/g, '-').replace(/\s+/g, '_').replace(/[^a-zA-ZčćšžđČĆŠŽĐ0-9\-_]/g, '');
             const filename = `Putni_nalog_${hrDateOd}_${cityForFile}.xlsx`;
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             showToast(`☁️ Upload: ${filename}...`);
