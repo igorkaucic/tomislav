@@ -1,6 +1,6 @@
 {
-  "name": "Basić Asistent",
-  "short_name": "Basić",
+  "name": "Basic Asistent",
+  "short_name": "Basic",
   "description": "Asistent za terenski rad - putni nalozi, kvarovi, računi",
   "start_url": "./index.html",
   "display": "standalone",
