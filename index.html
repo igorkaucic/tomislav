@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.21';
+const APP_VERSION = '3.22';
 
 // ===================================================
 // CONFIG & STATE
@@ -2467,9 +2467,9 @@ let gdriveAccessToken = null;
 let gdriveTokenClient = null;
 
 function initGdriveTokenClient() {
-  if (gdriveTokenClient) return;
+  if (gdriveTokenClient) return true;
   if (typeof google === 'undefined' || !google.accounts) {
-    showToast('❌ Google SDK nije učitan. Provjeri internet.', true);
+    showToast('❌ Google SDK nije učitan. Isključi AdBlock ili provjeri vezu.', true);
     return false;
   }
   gdriveTokenClient = google.accounts.oauth2.initTokenClient({
@@ -2482,17 +2482,30 @@ function initGdriveTokenClient() {
 
 async function getGdriveToken() {
   return new Promise((resolve, reject) => {
-    if (!initGdriveTokenClient()) { reject('SDK not loaded'); return; }
+    if (!initGdriveTokenClient()) { reject(new Error('Google SDK nije učitan.')); return; }
+    
+    if (gdriveAccessToken) {
+      resolve(gdriveAccessToken);
+      return;
+    }
+
     gdriveTokenClient.callback = (resp) => {
-      if (resp.error) { reject(resp); return; }
+      if (resp.error) {
+        console.warn('Silent token fail, retrying with consent...', resp.error);
+        gdriveTokenClient.callback = (resp2) => {
+          if (resp2.error) { reject(new Error('Login poništen: ' + resp2.error)); return; }
+          gdriveAccessToken = resp2.access_token;
+          resolve(resp2.access_token);
+        };
+        gdriveTokenClient.requestAccessToken({ prompt: 'consent' });
+        return;
+      }
       gdriveAccessToken = resp.access_token;
       resolve(resp.access_token);
     };
-    if (gdriveAccessToken) {
-      resolve(gdriveAccessToken);
-    } else {
-      gdriveTokenClient.requestAccessToken({ prompt: '' });
-    }
+
+    // Attempt silent background refresh first
+    gdriveTokenClient.requestAccessToken({ prompt: '' });
   });
 }
 
