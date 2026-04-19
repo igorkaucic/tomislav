@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.18';
+const APP_VERSION = '3.19';
 
 // ===================================================
 // CONFIG & STATE
@@ -2535,6 +2535,25 @@ async function gdriveUploadFile(blob, filename, folderId, token) {
   return await resp.json();
 }
 
+async function gdriveEmptyFolder(folderId, token) {
+  // Queries all children inside folderId and deletes them
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  try {
+    const searchResp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await searchResp.json();
+    if (data.files && data.files.length > 0) {
+      await Promise.all(data.files.map(f => 
+        fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+      ));
+    }
+  } catch(e) { console.error('Error emptying folder:', e); }
+}
+
 async function uploadToGoogleDrive() {
   try {
     showToast('🔐 Prijava na Google Drive...');
@@ -2551,10 +2570,15 @@ async function uploadToGoogleDrive() {
     let uploadCount = 0;
 
     // === CREATE ROOT FOLDER: Putni_Nalozi ===
-    showToast('📁 Kreiram foldere na Drive...');
+    showToast('📁 Sinkroniziram Drive (1:1 Mirror)...');
     const rootId = await gdriveFindOrCreateFolder('Putni_Nalozi', token);
-    // === CREATE MONTH SUBFOLDER ===
+    
+    // === CREATE OR FIND MONTH SUBFOLDER ===
     const monthId = await gdriveFindOrCreateFolder(monthFolder, token, rootId);
+
+    // DESTRUCTIVE SYNC: Wipe the month folder completely before re-uploading
+    showToast('🧹 Čistim stare datoteke...');
+    await gdriveEmptyFolder(monthId, token);
 
     // === PUTNI NALOZI (Excel files) ===
     const closedNalozi = nalozi.filter(n => n.status === 'zatvoren');
