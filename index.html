@@ -749,7 +749,7 @@
 // ===================================================
 // VERSION — single source of truth
 // ===================================================
-const APP_VERSION = '3.22';
+const APP_VERSION = '3.23';
 
 // ===================================================
 // CONFIG & STATE
@@ -2079,9 +2079,10 @@ async function exportZip() {
           const hrDateDo = nalog.datum_do ? nalog.datum_do.split('-').reverse().join('.') : hrDateOd;
 
           let sheet1 = wb.worksheets[0];
-          sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
+          sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ";
+          sheet1.getCell('C11').value = "TEHNIČAR";
           sheet1.getCell('C17').value = hrDateOd + '.';
-          sheet1.getCell('E17').value = nalog.ruta;
+          sheet1.getCell('E17').value = (nalog.ruta || '').toUpperCase();
           
           if (tripNotes.length) {
             const noteText = tripNotes.map(n => {
@@ -2095,7 +2096,7 @@ async function exportZip() {
             let sheet2 = wb.worksheets[1];
             sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
             sheet2.getCell('F5').value = "TEHNIČAR";
-            sheet2.getCell('F6').value = nalog.ruta;
+            sheet2.getCell('F6').value = (nalog.ruta || '').toUpperCase();
             sheet2.getCell('C11').value = hrDateOd;
             sheet2.getCell('F11').value = hrDateDo;
             sheet2.getCell('B16').value = hrDateOd;
@@ -2373,9 +2374,10 @@ async function downloadTrip(id) {
 
     // SHEET 0: Deckblatt
     const sheet1 = wb.worksheets[0];
-    sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
+    sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ";
+    sheet1.getCell('C11').value = "TEHNIČAR";
     sheet1.getCell('C17').value = hrDateOd + '.';
-    sheet1.getCell('E17').value = nalog.ruta;
+    sheet1.getCell('E17').value = (nalog.ruta || '').toUpperCase();
     
     // Notes: linked from kvarovi + legacy
     const allKvarovi = await dbGetAll('kvarovi');
@@ -2606,9 +2608,10 @@ async function uploadToGoogleDrive() {
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.load(arrayBuffer);
             const sheet1 = wb.worksheets[0];
-            sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ\nTEHNIČAR";
+            sheet1.getCell('C10').value = "TOMISLAV BAŠIĆ";
+            sheet1.getCell('C11').value = "TEHNIČAR";
             sheet1.getCell('C17').value = hrDateOd + '.';
-            sheet1.getCell('E17').value = nalog.ruta;
+            sheet1.getCell('E17').value = (nalog.ruta || '').toUpperCase();
 
             const allExpenses = racuni.filter(r => r.trip_id === nalog.id && r.ide_u_nalog !== false);
 
@@ -2616,7 +2619,7 @@ async function uploadToGoogleDrive() {
               const sheet2 = wb.worksheets[1];
               sheet2.getCell('F4').value = "TOMISLAV BAŠIĆ";
               sheet2.getCell('F5').value = "TEHNIČAR";
-              sheet2.getCell('F6').value = nalog.ruta;
+              sheet2.getCell('F6').value = (nalog.ruta || '').toUpperCase();
 
               // Insert expenses in GDrive generator too!
               const expenseRows = [29, 30, 31, 32, 33];
